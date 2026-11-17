@@ -90,7 +90,7 @@ def tube(path, width, depth, guide, closed=False):
     return verts, faces
 
 
-def basket(part, stone, setting):
+def basket(part, stone, setting, record=None):
     q = np.asarray(stone["rotation"])
     quat = q[:3]
     # Rows are the transformed local basis vectors.
@@ -214,6 +214,8 @@ def basket(part, stone, setting):
         pressure = np.clip((along - 0.69) / 0.21, 0.0, 1.0)
         path -= closing * (pressure**2 * (3 - 2 * pressure) * travel)[:, None]
         guide = np.cross(up, direction)
+        if record is not None:
+            record("claw", path @ basis + origin, width_profile, depth_profile)
         yield finish(*tube(path, width_profile, depth_profile, guide), seat=True)
         rails.append(path)
         thickness.append(width)
@@ -257,6 +259,9 @@ def basket(part, stone, setting):
     path = unit_at(a) * line[:, None]
     path[:, 1] = h
     width = np.median(thickness)
+    if record is not None:
+        record("gallery", path @ basis + origin, np.full(count, width * 0.56),
+               np.full(count, width * 0.61))
     yield finish(
         *tube(path, width * 0.56, width * 0.61, np.array([0.0, 1.0, 0.0]), closed=True)
     )

@@ -3,7 +3,7 @@ import * as T from "three";
 // Fit the existing polished casting around the resized center. The lower shank
 // stays at its native US size. Accent seats translate with their stones.
 export class CenterFit {
-  constructor(model, stones) {
+  constructor(model, stones, binding) {
     this.model = model;
     this.stones = stones;
     this.center = stones.find((m) => m.userData.role === "center");
@@ -13,113 +13,60 @@ export class CenterFit {
     const geo = this.mesh.geometry;
     this.rest = geo.attributes.position.array.slice();
     this.normals = geo.attributes.normal.array.slice();
-    this.delta = new Float32Array(this.rest.length);
-    this.linear = new Float32Array(this.rest.length);
-    this.quadratic = new Float32Array(this.rest.length);
     this.nativePose = {
       position: model.position.clone(),
       rotation: model.quaternion.clone(),
     };
-    const c = this.center.position;
-    const box = new T.Box3();
-    const p = new T.Vector3();
-    this.center.updateMatrix();
-    const verts = this.center.geometry.attributes.position;
-    for (let i = 0; i < verts.count; i++)
-      box.expandByPoint(
-        p.fromBufferAttribute(verts, i).applyMatrix4(this.center.matrix),
-      );
-    const half = box.getSize(new T.Vector3()).multiplyScalar(0.5);
-    const foot = Math.min(c.y - 1.5, 9.5);
-    const shoulder = (value, limit) => {
-      const extra = Math.max(0, Math.abs(value) - limit);
-      return extra
-        ? Math.sign(value) * (limit + extra / (1 + extra / 0.35))
-        : value;
-    };
-    const field = (v, out) => {
-      const w = T.MathUtils.smoothstep(v.y, foot - 1.5, c.y - 0.65);
-      return out
-        .set(
-          shoulder(v.x - c.x, half.x + 0.55),
-          v.y - foot,
-          shoulder(v.z - c.z, half.z + 0.55),
-        )
-        .multiplyScalar(w);
-    };
-    this.shifts = this.origins.map((v) => field(v, new T.Vector3()));
-    const seats = stones.flatMap((stone, i) => {
-      if (stone === this.center) return [];
-      stone.geometry.computeBoundingSphere();
-      return [
-        {
-          position: this.origins[i],
-          radius: stone.geometry.boundingSphere.radius * stone.scale.x,
-          shift: this.shifts[i],
-        },
-      ];
-    });
-    const displacement = (v, out) => {
-      field(v, out);
-      for (const seat of seats) {
-        const d = v.distanceToSquared(seat.position);
-        const outer = seat.radius + 0.65;
-        if (d < outer * outer)
-          out.lerp(
-            seat.shift,
-            1 - T.MathUtils.smoothstep(Math.sqrt(d), seat.radius * 0.8, outer),
-          );
-      }
-      return out;
-    };
-    const n = new T.Vector3(),
-      u = new T.Vector3(),
-      v = new T.Vector3();
-    const d = new T.Vector3(),
-      du = new T.Vector3(),
-      dv = new T.Vector3(),
-      temp = new T.Vector3(),
-      cross = new T.Vector3();
-    for (let i = 0; i < this.rest.length; i += 3) {
-      p.fromArray(this.rest, i);
-      displacement(p, d).toArray(this.delta, i);
-      n.fromArray(this.normals, i);
-      u.set(0, 1, 0);
-      if (Math.abs(n.y) > 0.9) u.set(1, 0, 0);
-      u.cross(n).normalize();
-      v.crossVectors(n, u);
-      displacement(temp.copy(p).addScaledVector(u, 0.01), du)
-        .sub(d)
-        .multiplyScalar(100);
-      displacement(temp.copy(p).addScaledVector(v, 0.01), dv)
-        .sub(d)
-        .multiplyScalar(100);
-      // Cofactors of the deforming tangent frame preserve the welded shading normals.
-      cross
-        .crossVectors(du, v)
-        .add(temp.crossVectors(u, dv))
-        .toArray(this.linear, i);
-      cross.crossVectors(du, dv).toArray(this.quadratic, i);
-    }
+    const header = new DataView(binding);
+    const count = geo.attributes.position.count;
+    if (
+      header.getUint32(0) !== 0x46495431 ||
+      header.getUint32(4, true) !== count ||
+      header.getUint32(8, true) !== stones.length ||
+      binding.byteLength !== 12 + stones.length * 12 + count * 24
+    )
+      throw Error("Setting dimensions do not match the casting");
+    const shifts = new Float32Array(binding, 12, stones.length * 3);
+    this.shifts = stones.map((_, i) =>
+      new T.Vector3().fromArray(shifts, i * 3),
+    );
+    this.fields = new Int16Array(binding, 12 + shifts.byteLength);
+    // Preserve the polished normals from the high-resolution master after
+    // the decimated casting changes shape.
+    geo.computeVertexNormals();
+    const base = geo.attributes.normal.array;
+    for (let i = 0; i < base.length; i++) this.normals[i] -= base[i];
     this.stonePoints = new Float32Array(
       stones.reduce((n, m) => n + m.geometry.attributes.position.count * 3, 0),
     );
   }
-  apply(scale) {
-    if (this.scale === scale) return;
+  apply(scale, profile) {
+    if (this.scale === scale && this.profile === profile) return;
     this.scale = scale;
-    const t = scale - 1,
-      t2 = t * t;
+    this.profile = profile;
+    const t = scale - 1;
     const geo = this.mesh.geometry,
-      pos = geo.attributes.position,
-      normal = geo.attributes.normal;
-    for (let i = 0; i < this.rest.length; i++) {
-      pos.array[i] = this.rest[i] + t * this.delta[i];
-      normal.array[i] =
-        this.normals[i] + t * this.linear[i] + t2 * this.quadratic[i];
+      pos = geo.attributes.position;
+    const count = pos.count;
+    const profileIndex = { fine: 1, classic: 2, bold: 3 }[profile];
+    const start = profileIndex * count * 3;
+    for (let axis = 0; axis < 3; axis++) {
+      const a = axis * count;
+      for (let i = 0; i < count; i++) {
+        const j = i * 3 + axis;
+        pos.array[j] =
+          this.rest[j] +
+          0.001 * (this.fields[a + i] * t + this.fields[start + a + i]);
+      }
     }
-    pos.needsUpdate = normal.needsUpdate = true;
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+    const normal = geo.attributes.normal;
+    for (let i = 0; i < normal.array.length; i++)
+      normal.array[i] += this.normals[i];
+    geo.normalizeNormals();
     geo.computeBoundingSphere();
+    this.volume = meshVolume(geo);
     this.center.scale.setScalar(this.centerScale * scale);
     this.center.userData.mmPerUnit = this.center.scale.x;
     const p = new T.Vector3();
@@ -135,7 +82,7 @@ export class CenterFit {
     });
     this.model.position.copy(this.nativePose.position);
     this.model.quaternion.copy(this.nativePose.rotation);
-    if (Math.abs(t) > 0.00001) this.restOnFloor(pos.array);
+    this.restOnFloor(pos.array);
     this.model.updateMatrixWorld(true);
   }
   restOnFloor(metal) {
@@ -166,4 +113,21 @@ export class CenterFit {
     this.model.quaternion.set(0, Math.cos(half), -Math.sin(half), 0);
     this.model.position.y = -contact;
   }
+}
+
+// Signed tetrahedral volumes of the closed, welded metal surface in mm³.
+function meshVolume(geometry) {
+  const v = geometry.attributes.position.array,
+    ids = geometry.index.array;
+  let volume = 0;
+  for (let i = 0; i < ids.length; i += 3) {
+    const a = 3 * ids[i],
+      b = 3 * ids[i + 1],
+      c = 3 * ids[i + 2];
+    volume +=
+      v[a] * (v[b + 1] * v[c + 2] - v[b + 2] * v[c + 1]) +
+      v[a + 1] * (v[b + 2] * v[c] - v[b] * v[c + 2]) +
+      v[a + 2] * (v[b] * v[c + 1] - v[b + 1] * v[c]);
+  }
+  return Math.abs(volume) / 6;
 }

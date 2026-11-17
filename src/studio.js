@@ -1,4 +1,5 @@
 import * as T from "three";
+import { gunzipSync } from "three/addons/libs/fflate.module.js";
 import { CenterFit } from "./center-fit.js";
 import { BrandContrast } from "./brand.js";
 import { CausticMap } from "./caustics.js";
@@ -18,6 +19,7 @@ export class JewelryStudio {
       setting: "trilogy",
       cut: "emerald",
       carats: 1.5,
+      profile: "classic",
       center: "emerald",
       accent: "natural-diamond",
       metal: "yellow-gold",
@@ -258,7 +260,11 @@ export class JewelryStudio {
         this.gltf.loadAsync("/assets/rings/" + id + ".glb"),
         this.texLoader.loadAsync("/assets/floors/" + id + ".png"),
         this.texLoader.loadAsync("/assets/floors/" + id + "-transport.png"),
-      ]).then(([gltf, floor, keyAtlas]) => {
+        fetch("/assets/fit/" + id + ".fit").then(async (r) => {
+          if (!r.ok) throw Error("Missing setting dimensions");
+          return gunzipSync(new Uint8Array(await r.arrayBuffer())).buffer;
+        }),
+      ]).then(([gltf, floor, keyAtlas, binding]) => {
         for (const tex of [floor, keyAtlas]) {
           tex.flipY = false;
           tex.colorSpace = T.NoColorSpace;
@@ -275,7 +281,7 @@ export class JewelryStudio {
           if (mesh.isMesh) materials.add(mesh.material);
         });
         materials.forEach((material) => material.dispose());
-        return { scene: gltf.scene, floor, keyAtlas };
+        return { scene: gltf.scene, floor, keyAtlas, binding };
       });
       this.assets.set(id, work);
       work.catch(() => {
@@ -331,7 +337,7 @@ export class JewelryStudio {
         mesh.castShadow = true;
       } else this.stones.push(mesh);
     });
-    asset.fit ??= new CenterFit(this.model, this.stones);
+    asset.fit ??= new CenterFit(this.model, this.stones, asset.binding);
     this.fit = asset.fit;
     // A cached model may have been returned to its native pose above.
     this.fit.scale = undefined;
@@ -355,6 +361,12 @@ export class JewelryStudio {
     this.invalidate(true);
     return true;
   }
+  setProfile(profile) {
+    if (!["fine", "classic", "bold"].includes(profile)) return;
+    this.state.profile = profile;
+    this.fitCenter(this.lib.gems.find((g) => g.id === this.state.center));
+    this.invalidate(true);
+  }
   setCarats(value) {
     this.state.carats = T.MathUtils.clamp(value, 0.5, 3);
     this.fitCenter(this.lib.gems.find((g) => g.id === this.state.center));
@@ -372,7 +384,7 @@ export class JewelryStudio {
       .clone()
       .applyQuaternion(this.fit.nativePose.rotation)
       .add(this.fit.nativePose.position);
-    this.fit.apply(scale);
+    this.fit.apply(scale, this.state.profile);
     this.model.updateWorldMatrix(true, true);
     const anchor = stone
       .getWorldPosition(new T.Vector3())
@@ -497,16 +509,21 @@ export class JewelryStudio {
     this.scene.background = new T.Color(rig.backgroundColor);
     this.scene.fog = new T.Fog(rig.backgroundColor, 93, 230);
     this.floorMat.color.set(rig.stageColor);
-    this.key.color.set(id === "gallery" ? "#ffe2af" : "#fffaf2");
-    this.key.intensity = id === "darkfield" ? 0.35 : 1.1;
+    this.key.color.set(
+      id === "window" ? "#f2f6ff" : id === "gallery" ? "#ffe2af" : "#fffaf2",
+    );
+    this.key.intensity =
+      id === "window" ? 0.65 : id === "darkfield" ? 0.35 : 1.1;
     this.causticMap.uniforms.gain.value =
-      id === "darkfield"
-        ? 5
-        : id === "spotlights"
-          ? 13
-          : id === "gallery"
-            ? 8
-            : 7;
+      id === "window"
+        ? 4
+        : id === "darkfield"
+          ? 5
+          : id === "spotlights"
+            ? 13
+            : id === "gallery"
+              ? 8
+              : 7;
     this.causticMap.uniforms.sourceTint.value.copy(this.key.color);
     this.setAngle(this.state.rotation);
     this.setExposure(this.state.exposure);
@@ -603,7 +620,7 @@ export class JewelryStudio {
             if (part) break;
           }
         }
-        if (part) this.onPart?.(part);
+        if (part) this.onPart?.(part, e.pointerType);
       }
       tap = null;
     });

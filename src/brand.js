@@ -52,6 +52,7 @@ export class BrandContrast {
         const ink = this.lightInk
           ? "#fff7e9"
           : {
+              window: "#25303b",
               gallery: "#392519",
               softbox: "#211d2d",
               spotlights: "#142831",

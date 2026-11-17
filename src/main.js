@@ -2,6 +2,7 @@ import "./style.css";
 import lib from "../public/assets/library.json";
 import rigs from "../public/assets/lights/lights.json";
 import poses from "../public/assets/ring-poses.json";
+import { updateEstimate, loadingEstimate } from "./estimate.js";
 import { JewelryStudio } from "./studio.js";
 
 const $ = (id) => document.getElementById(id);
@@ -54,6 +55,10 @@ const panels = [
   "lens-panel",
 ];
 function panel(id, hit = null) {
+  $("cut-gem").hidden = !(
+    id === "cuts" && hit?.object.userData.role === "center"
+  );
+  if (id) $("estimate").open = false;
   if (studio) {
     const mark = $("part-mark");
     studio.selectedPart = hit
@@ -104,6 +109,11 @@ function paint() {
   const metal = lib.metals.find((m) => m.id === s.metal),
     cut = lib.cuts.find((c) => c.id === s.cut),
     rig = rigs.find((l) => l.id === s.rig);
+  pressed(
+    document.querySelectorAll("[data-profile]"),
+    (b) => b.dataset.profile === s.profile,
+  );
+  if (!loadingDesign && studio.fit) updateEstimate(studio);
   $("stone-family").textContent = gem.family;
   $("stone-name").textContent = gem.name;
   $("chip").style.setProperty("--stone", gem.color);
@@ -217,7 +227,10 @@ function gemList() {
   $("gem-count").textContent =
     list.length + " of " + lib.gems.length + " stones";
 }
+let loadingDesign = false;
 async function design(setting, cut) {
+  loadingDesign = true;
+  loadingEstimate();
   const token = ++request;
   $("try-on").disabled = true;
   notice("Loading setting…");
@@ -225,11 +238,13 @@ async function design(setting, cut) {
     if ((await studio.setDesign(setting, cut)) && token === request) {
       if (!studio.stones.some((stone) => stone.userData.role !== "center"))
         target = "center";
+      loadingDesign = false;
       paint();
       notice("");
     }
   } catch (e) {
     if (token === request) {
+      loadingDesign = false;
       paint();
       notice("Setting failed to load. Select it again to retry.");
     }
@@ -289,14 +304,31 @@ function bind() {
     trySession?.close();
     startTryOn();
   };
+  $("cut-gem").onclick = () => {
+    const selected = studio.selectedPart;
+    const hit = selected && {
+      object: selected.object,
+      point: selected.object.localToWorld(selected.anchor.clone()),
+    };
+    target = "center";
+    panel("library", hit);
+  };
+  for (const b of document.querySelectorAll("[data-profile]"))
+    b.onclick = () => {
+      studio.setProfile(b.dataset.profile);
+      paint();
+    };
   $("picked-styles").onclick = () => panel("styles");
-  studio.onPart = (hit) => {
+  studio.onPart = (hit, pointer) => {
     document.body.classList.add("part-used");
     const role = hit.object.userData.role;
     const metal = role === "band" || role === "head";
     if (!metal) target = role === "center" ? "center" : "accent";
     paint();
-    panel(metal ? "setting-picker" : "library", hit);
+    const cutPicker =
+      role === "center" &&
+      (pointer === "touch" || matchMedia("(max-width:700px)").matches);
+    panel(metal ? "setting-picker" : cutPicker ? "cuts" : "library", hit);
   };
   for (const [id, label] of [
     ["natural-diamond", "Diamond"],
@@ -385,6 +417,7 @@ function bind() {
   }
   $("carat").oninput = (e) => {
     studio.setCarats(Number(e.target.value));
+    if (!loadingDesign && studio.fit) updateEstimate(studio);
     $("carat-v").value = studio.state.carats.toFixed(2) + " ct";
     e.target.setAttribute("aria-valuetext", $("carat-v").value);
   };
@@ -418,6 +451,7 @@ function bind() {
     el.onclick = () => tool(el.dataset.tool);
   $("stage").addEventListener("pointerdown", () => {
     panel(null);
+    $("estimate").open = false;
     $("design").classList.remove("mobile-open");
   });
   $("pick-focus").onclick = () => {
@@ -496,6 +530,7 @@ try {
     (s) => ($("focus-label").textContent = s),
   );
   bind();
+  loadingEstimate();
   paint();
   await Promise.all([
     studio.setLight("softbox"),
@@ -506,6 +541,7 @@ try {
   notice("");
 } catch (e) {
   console.error(e);
+  updateEstimate(null);
   notice(
     "The studio could not start. Check WebGL 2 hardware acceleration and reload.",
   );

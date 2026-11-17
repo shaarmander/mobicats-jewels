@@ -20,6 +20,7 @@ import numpy as np
 
 from lying_poses import build_poses
 from cut_icons import build_icons
+from setting_profiles import write as write_profile_binding
 
 DEST = Path(__file__).resolve().parents[1] / "public" / "assets"
 
@@ -268,7 +269,10 @@ def finish(raw):
     for setting in library["settings"]:
         for cut in library["cuts"]:
             stem = f"{setting['id']}-{cut['id']}"
-            pack(raw / (stem + ".json"), rings / (stem + ".glb"))
+            source = raw / (stem + ".json")
+            glb = rings / (stem + ".glb")
+            pack(source, glb)
+            write_profile_binding(source, glb, DEST / "fit" / (stem + ".fit"))
     build_poses()
 
 

@@ -17,6 +17,7 @@ DEST = HERE / "public" / "assets" / "lights"
 LUMA = np.array([.2126, .7152, .0722])
 RIGS = [
     ("softbox", "Studio softbox", "studio", 0.0, .98, "#b3b1a6", "#e1e2da"),
+    ("window", "Window light", None, 0.0, 1.0, "#bbbcc0", "#e7e8ea"),
     ("spotlights", "Jewelry spotlights", "store-spotlights", -.18, 1.00, "#868a90", "#b9bfc7"),
     ("gallery", "Warm gallery", "warm-indoor", .14, .96, "#b2a597", "#d9cec0"),
     ("darkfield", "Darkfield", "darkfield", .0, 1.07, "#25282c", "#363a40"),
@@ -107,6 +108,13 @@ def card(dirs, azimuth, elevation, width, height, roll, feather):
 # (azimuth, elevation, width, height, roll, edge feather), linear RGB radiance.
 # Negative fills are opaque flags, so they attenuate the sources behind them.
 MODIFIERS = {
+    "window": [
+        ((125,40,102,78,-12,.72), (3.1,3.25,3.50)),
+        ((-43,27,22,100,12,.58), (2.6,2.70,2.86)),
+        ((35,18,26,95,0,.8), .13),
+        ((-125,24,32,85,-12,.65), .18),
+        ((-14,53,4,4,0,.80),(24.,28.,34.)),
+    ],
     "softbox": [
         ((135,35,64,53,-14,.23), (3.8,3.72,3.56)),
         ((-36,22,12,89,6,.32), (3.35,3.55,3.70)),
@@ -142,7 +150,9 @@ MODIFIERS = {
 def bake(dirs, lights, rig):
     source = native_sources(dirs, lights, rig)
     y = dirs[...,1]
-    if rig == "softbox":
+    if rig == "window":
+        surround, floor = (.38,.40,.44), (.72,.73,.76)
+    elif rig == "softbox":
         surround, floor = (.09,.095,.097), (.62,.62,.60)
     elif rig == "spotlights":
         surround, floor = (.045,.05,.058), (.39,.40,.42)
@@ -165,7 +175,8 @@ def bake(dirs, lights, rig):
     # Compact jewelry pin lights create brief, angular flashes when a real
     # facet lines up with an emitter. Negative-fill cards can still occlude them.
     pins = [(-68,44,2.2),(18,62,1.9),(73,24,2.5),(154,49,2.0),(-144,19,1.7),(109,72,2.3)]
-    pin_radiance = {"softbox":48,"spotlights":95,"gallery":33,"darkfield":47}[rig]
+    if rig=="window": pins=[]
+    pin_radiance = {"window":0,"softbox":48,"spotlights":95,"gallery":33,"darkfield":47}[rig]
     pin_color=np.array((1.,.82,.59) if rig=="gallery" else (1.,.98,.96))
     for az,el,diameter in pins:
         env+=card(dirs,az,el,diameter,diameter,45,.45)[...,None]*pin_radiance*pin_color
@@ -282,13 +293,13 @@ def main():
     DEST.mkdir(parents=True,exist_ok=True)
     if args.review_dir:
         args.review_dir.mkdir(parents=True,exist_ok=True)
-        sheet=Image.new("RGB",(970 if args.review_gem else 770,4*224),"#f0eee8")
+        sheet=Image.new("RGB",(970 if args.review_gem else 770,len(RIGS)*224),"#f0eee8")
         draw=ImageDraw.Draw(sheet)
         try: title=ImageFont.truetype("segoeui.ttf",20)
         except OSError: title=ImageFont.load_default()
     manifest=[]; stats={}
     for row,(key,name,source,rotation,exposure,stage,bg) in enumerate(RIGS):
-        preset=json.loads((args.studio/"presets"/"lighting"/(source+".json")).read_text())
+        preset=json.loads((args.studio/"presets"/"lighting"/(source+".json")).read_text()) if source else {"lights":[]}
         panorama=np.zeros((H,W,3),dtype=np.float32)
         for row0 in range(0,H,128):
             row1=min(row0+128,H)

@@ -10,6 +10,16 @@
     "compactEnvironment": "/assets/lights/softbox-compact.hdr"
   },
   {
+    "id": "window",
+    "name": "Window light",
+    "environment": "/assets/lights/window.hdr",
+    "compactEnvironment": "/assets/lights/window-compact.hdr",
+    "rotationY": 0,
+    "exposure": 1,
+    "stageColor": "#bbbcc0",
+    "backgroundColor": "#e7e8ea"
+  },
+  {
     "id": "spotlights",
     "name": "Jewelry spotlights",
     "environment": "/assets/lights/spotlights.hdr",

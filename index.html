@@ -34,6 +34,34 @@
         >
       </div>
     </header>
+    <details id="estimate">
+      <summary>
+        <span>Materials estimate</span>
+        <strong id="estimate-reels" aria-hidden="true"></strong>
+        <span class="sr-price" id="estimate-live" aria-live="polite"></span>
+      </summary>
+      <div class="estimate-body">
+        <dl>
+          <dt id="price-metal-label">Metal</dt>
+          <dd id="price-metal"></dd>
+          <dt id="price-center-label">Center</dt>
+          <dd id="price-center"></dd>
+          <dt id="price-accents-label">Accents</dt>
+          <dd id="price-accents"></dd>
+        </dl>
+        <p id="price-note"></p>
+        <small
+          >USD · November 2026 references. Includes fine-metal content and loose
+          stones. Labor, setting, markup and tax are additional.</small
+        >
+        <a
+          href="https://github.com/shaarmander/mobicats-jewels/blob/main/docs/pricing.md"
+          target="_blank"
+          rel="noopener"
+          >Pricing sources ↗</a
+        >
+      </div>
+    </details>
     <div class="top-actions">
       <button
         id="light-toggle"
@@ -86,6 +114,14 @@
               >Three-stone</b
             ><i data-icon="grid"></i>
           </button>
+        </div>
+        <div class="profile-row">
+          <span class="caption">Profile</span>
+          <div class="segmented" role="group" aria-label="Setting thickness">
+            <button data-profile="fine" aria-pressed="false">Fine</button>
+            <button data-profile="classic" aria-pressed="true">Classic</button>
+            <button data-profile="bold" aria-pressed="false">Bold</button>
+          </div>
         </div>
         <div class="section">
           <div class="section-label">
@@ -167,6 +203,9 @@
           <i data-icon="close"></i>
         </button>
       </div>
+      <button id="cut-gem" class="library-btn" hidden>
+        Change gemstone <i data-icon="diamond"></i>
+      </button>
       <div
         class="setting-grid cut-grid"
         id="cut-grid"

@@ -245,9 +245,35 @@ export class Lens {
         weight: { value: 1 },
         rays: { value: this.rays.texture },
         sparkle: { value: 0 },
+        edgeAA: { value: false },
       },
       fragmentShader: `varying vec2 uv0;uniform sampler2D frame,rays;uniform float weight,sparkle;
-      void main(){gl_FragColor=vec4(texture2D(frame,uv0).rgb*weight+sparkle*texture2D(rays,uv0).rgb,1.);
+      uniform bool edgeAA;
+      float perceived(vec3 c) {
+        float light=dot(c,vec3(.2126,.7152,.0722));
+        return sqrt(light/(1.+light));
+      }
+      vec3 resolveEdge(vec3 center){
+        vec2 px=1./vec2(textureSize(frame,0));
+        float nw=perceived(texture2D(frame,uv0+px*vec2(-1.,1.)).rgb);
+        float ne=perceived(texture2D(frame,uv0+px).rgb);
+        float sw=perceived(texture2D(frame,uv0-px).rgb);
+        float se=perceived(texture2D(frame,uv0+px*vec2(1.,-1.)).rgb);
+        float mid=perceived(center), lo=min(mid,min(min(nw,ne),min(sw,se)));
+        float hi=max(mid,max(max(nw,ne),max(sw,se)));
+        if(hi-lo < max(.025,hi*.075))return center;
+        vec2 edge=vec2(-(nw+ne-sw-se),nw+sw-ne-se);
+        float scale=min(abs(edge.x),abs(edge.y)) + max(.025,(nw+ne+sw+se)*.025);
+        vec2 along=clamp(edge/scale,vec2(-4.),vec2(4.))*px;
+        vec3 inner=.5*(texture2D(frame,uv0-along/6.).rgb+texture2D(frame,uv0+along/6.).rgb);
+        vec3 wider=.5*inner+.25*(texture2D(frame,uv0-along*.5).rgb+texture2D(frame,uv0+along*.5).rgb);
+        float l=perceived(wider);
+        return mix(center,l<lo || l>hi?inner:wider,.8);
+      }
+      void main(){
+        vec3 color=texture2D(frame,uv0).rgb;
+        if(edgeAA)color=resolveEdge(color);
+        gl_FragColor=vec4(color*weight+sparkle*texture2D(rays,uv0).rgb,1.);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
       }`,
@@ -256,14 +282,13 @@ export class Lens {
     });
     this.quad = new T.Mesh(new T.PlaneGeometry(2, 2), this.add);
     this.scene.add(this.quad);
-    this.touchDisplay = matchMedia("(pointer:coarse)").matches;
     this.resetHistory();
   }
   resetHistory() {
     this.samples = 0;
     this.previewReady = false;
   }
-  present(texture, weight) {
+  present(texture, weight, edgeAA = false) {
     const r = this.renderer;
     if (this.sparkle > 0) {
       const w = Math.max(1, Math.round(this.size.x / 3)),
@@ -289,6 +314,7 @@ export class Lens {
       r.render(this.scene, this.ortho);
     }
     this.quad.material = this.resolve;
+    this.resolve.uniforms.edgeAA.value = edgeAA;
     this.resolve.uniforms.frame.value = texture;
     this.resolve.uniforms.weight.value = weight;
     this.resolve.uniforms.sparkle.value = this.sparkle;
@@ -313,12 +339,13 @@ export class Lens {
     this.quad.material = this.bokeh;
     r.setRenderTarget(this.preview);
     r.render(this.scene, this.ortho);
-    this.present(this.preview.texture, 1);
+    this.present(this.preview.texture, 1, true);
   }
   draw(scene, focus, aperture, interactive) {
     const r = this.renderer,
       c = this.camera;
-    const smoothFacets = this.touchDisplay && !interactive && this.float;
+    const smoothFacets = !interactive && this.float;
+    if (interactive) this.resetHistory();
     r.getDrawingBufferSize(this.size);
     if (aperture && (interactive || !this.float || !this.previewReady)) {
       this.drawPreview(scene, focus, aperture);
@@ -326,16 +353,11 @@ export class Lens {
       return !interactive && this.float;
     }
     if (!aperture && !smoothFacets) {
-      if (!this.sparkle) {
-        r.setRenderTarget(null);
-        r.render(scene, c);
-        return false;
-      }
       if (this.view.width !== this.size.x || this.view.height !== this.size.y)
         this.view.setSize(this.size.x, this.size.y);
       r.setRenderTarget(this.view);
       r.render(scene, c);
-      this.present(this.view.texture, 1);
+      this.present(this.view.texture, 1, true);
       return false;
     }
     if (
