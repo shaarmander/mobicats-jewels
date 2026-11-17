@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#e6e3da" />
+    <meta
+      name="description"
+      content="Design a ring in Mobicat’s Jewels. Explore 86 gemstones, 18 cuts and seven metals under live studio lighting."
+    />
+    <link rel="icon" href="/assets/brand/mobicat-linework.png" />
+    <title>Mobicat’s Jewels</title>
+  </head>
+  <body>
+    <canvas
+      id="stage"
+      aria-label="Interactive jewelry stage. Drag to orbit, scroll or pinch to zoom."
+    ></canvas>
+    <header class="brand">
+      <a href="https://mobicat.club/" aria-label="Mobicat">
+        <span class="brand-mark" aria-hidden="true"></span>
+      </a>
+      <div class="brand-title">
+        <h1>Mobicat’s Jewels</h1>
+        <a
+          class="github-star"
+          href="https://github.com/shaarmander/mobicats-jewels"
+          target="_blank"
+          rel="noopener noreferrer"
+          ><i data-icon="star"></i>Star on GitHub</a
+        >
+      </div>
+    </header>
+    <div class="top-actions">
+      <button
+        id="light-toggle"
+        aria-expanded="false"
+        aria-controls="light-panel"
+      >
+        <i data-icon="sun"></i><span id="light-title">Studio softbox</span
+        ><i data-icon="down"></i></button
+      ><button
+        id="lens-toggle"
+        title="Camera and depth of field"
+        aria-label="Camera and depth of field"
+        aria-expanded="false"
+        aria-controls="lens-panel"
+      >
+        <i data-icon="aperture"></i>
+      </button>
+    </div>
+    <aside id="design" class="card design">
+      <div class="card-head">
+        <h2>Ring design</h2>
+        <button
+          class="bare"
+          id="fold-design"
+          title="Collapse design panel"
+          aria-expanded="true"
+          aria-controls="design-body"
+        >
+          <i data-icon="minus"></i>
+        </button>
+      </div>
+      <div id="design-body">
+        <div class="section">
+          <div class="caption">Setting</div>
+          <button
+            id="styles-open"
+            class="library-btn"
+            aria-controls="styles"
+            aria-expanded="false"
+          >
+            <img id="style-preview" alt="" width="56" height="40" /><b
+              id="style-name"
+              >Three-stone</b
+            ><i data-icon="grid"></i>
+          </button>
+        </div>
+        <div class="section">
+          <div class="section-label">
+            <span class="caption">Gemstones</span>
+            <div
+              id="stone-target"
+              class="segmented"
+              role="group"
+              aria-label="Stone to edit"
+            >
+              <button data-target="center" aria-pressed="true">Center</button>
+              <button data-target="accent" aria-pressed="false">Accents</button>
+            </div>
+          </div>
+          <button
+            class="library-btn"
+            id="library-open"
+            aria-controls="library"
+            aria-expanded="false"
+          >
+            <span class="facet-chip" id="chip"></span
+            ><span
+              ><b id="stone-name">Emerald</b
+              ><small id="stone-family">Beryl</small></span
+            ><i data-icon="grid"></i>
+          </button>
+        </div>
+        <div class="section">
+          <span class="caption">Center cut</span>
+          <button
+            class="library-btn"
+            id="cuts-open"
+            aria-expanded="false"
+            aria-controls="cuts"
+          >
+            <img id="cut-preview" alt="" width="42" height="36" /><b
+              id="cut-name"
+              >Emerald</b
+            ><i data-icon="grid"></i>
+          </button>
+          <label class="slider-label" for="carat"
+            >Center weight
+            <output for="carat" id="carat-v">1.50 ct</output></label
+          >
+          <input
+            type="range"
+            id="carat"
+            min=".5"
+            max="3"
+            step=".05"
+            value="1.5"
+          />
+        </div>
+        <div class="section last">
+          <span class="caption">Metal</span>
+          <div id="metals" class="swatches"></div>
+          <span id="metal-name">18k yellow gold</span>
+        </div>
+      </div>
+    </aside>
+    <aside id="styles" class="card flyout library styles" hidden>
+      <div class="card-head">
+        <h2>Ring styles</h2>
+        <button class="bare" data-close="styles" aria-label="Close ring styles">
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <div
+        class="setting-grid"
+        id="settings"
+        role="group"
+        aria-label="Ring styles"
+      ></div>
+    </aside>
+    <aside id="cuts" class="card flyout library styles" hidden>
+      <div class="card-head">
+        <h2>Center cuts</h2>
+        <button class="bare" data-close="cuts" aria-label="Close center cuts">
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <div
+        class="setting-grid cut-grid"
+        id="cut-grid"
+        role="group"
+        aria-label="Center cuts"
+      ></div>
+    </aside>
+    <aside id="library" class="card flyout library" hidden>
+      <div class="card-head">
+        <h2>Gem library</h2>
+        <button
+          class="bare"
+          data-close="library"
+          aria-label="Close gem library"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <div class="search">
+        <i data-icon="search"></i
+        ><input
+          id="gem-search"
+          type="search"
+          placeholder="Search stones or families"
+          aria-label="Search stones or families"
+        />
+      </div>
+      <div id="gem-list" role="group" aria-label="Gemstones"></div>
+      <div class="list-count" id="gem-count"></div>
+    </aside>
+    <aside class="card flyout top-panel" id="light-panel" hidden>
+      <div class="card-head">
+        <h2>Lighting</h2>
+        <button
+          class="bare"
+          data-close="light-panel"
+          aria-label="Close lighting"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <div class="rig-list" id="rigs"></div>
+      <label class="slider-label" for="azimuth"
+        >Light rotation <output id="azimuth-v">0°</output></label
+      ><input
+        id="azimuth"
+        type="range"
+        min="-180"
+        max="180"
+        value="0"
+        step="1"
+      /><label class="slider-label" for="exposure"
+        >Exposure <output id="exposure-v">0.0 EV</output></label
+      ><input
+        id="exposure"
+        type="range"
+        min="-1.5"
+        max="1.5"
+        step=".05"
+        value="0"
+      />
+    </aside>
+    <aside class="card flyout top-panel" id="lens-panel" hidden>
+      <div class="card-head">
+        <h2>Camera</h2>
+        <button class="bare" data-close="lens-panel" aria-label="Close camera">
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <label class="slider-label" for="dof"
+        >Depth of field <output id="dof-v">Off</output></label
+      ><input id="dof" type="range" min="0" max="100" step="1" value="0" />
+      <label class="slider-label" for="sparkle"
+        >Sparkle <output id="sparkle-v">65%</output></label
+      >
+      <input id="sparkle" type="range" min="0" max="100" step="1" value="65" />
+      <div class="focus-line">
+        <small>Focus</small><span id="focus-label">Center stone</span>
+      </div>
+      <div class="action-pair">
+        <button id="pick-focus">Pick surface</button
+        ><button id="center-focus">Center stone</button>
+      </div>
+    </aside>
+    <div class="object-label">
+      <h2 id="design-title">Emerald trilogy</h2>
+      <span id="design-detail">Emerald cut · 18k yellow gold</span>
+    </div>
+    <div class="dock" role="toolbar" aria-label="Stage controls">
+      <button id="mobile-edit" class="mobile-only" aria-label="Edit ring">
+        <i data-icon="adjust"></i>
+      </button>
+      <button
+        data-tool="orbit"
+        title="Orbit (O)"
+        aria-label="Orbit"
+        aria-pressed="true"
+      >
+        <i data-icon="orbit"></i><span>Orbit</span></button
+      ><button
+        data-tool="move"
+        title="Move ring (M)"
+        aria-label="Move ring"
+        aria-pressed="false"
+      >
+        <i data-icon="move"></i></button
+      ><button
+        data-tool="focus"
+        title="Pick focus (F)"
+        aria-label="Pick focus"
+        aria-pressed="false"
+      >
+        <i data-icon="focus"></i></button
+      ><em></em>
+      <button
+        id="spin"
+        title="Turntable (Space)"
+        aria-label="Turntable"
+        aria-pressed="false"
+      >
+        <i data-icon="play"></i></button
+      ><button id="zoom-out" title="Zoom out" aria-label="Zoom out">
+        <i data-icon="minus"></i></button
+      ><button id="zoom-in" title="Zoom in" aria-label="Zoom in">
+        <i data-icon="plus"></i></button
+      ><button id="home" title="Reset view (Home)" aria-label="Reset view">
+        <i data-icon="reset"></i>
+      </button>
+    </div>
+    <div class="status"><i></i><span id="perf">WebGL 2</span></div>
+    <div id="notice" role="status">Preparing the studio…</div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

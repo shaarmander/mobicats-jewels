@@ -1,0 +1,88 @@
+#version 430
+layout(local_size_x=128) in;
+struct Node { vec4 lo; vec4 hi; ivec4 range; };
+struct Tri { vec4 a; vec4 e; vec4 f; };
+layout(std430,binding=0) readonly buffer Tree { Node nodes[]; };
+layout(std430,binding=1) readonly buffer Mesh { Tri obstacles[]; };
+layout(std430,binding=2) readonly buffer Facets { vec4 planes[]; };
+layout(std430,binding=3) readonly buffer Surface { Tri surface[]; };
+layout(std430,binding=4) buffer Film { uint flux[]; };
+uniform int shots, own, faceCount, triangleCount, nodeCount, size;
+uniform float area, ior, floorY, width, spread;
+uniform vec2 key;
+uint rng;
+float random01(){
+    rng=rng*747796405u+2891336453u;
+    uint x=((rng>>((rng>>28u)+4u))^rng)*277803737u;
+    return float((x>>22u)^x)*(1.0/4294967296.0);
+}
+bool occluded(vec3 p, vec3 d, float limit){
+    vec3 inv=1./(d+vec3(1.e-18));
+    for(int i=0;i<nodeCount;){
+        Node n=nodes[i];vec3 a=(n.lo.xyz-p)*inv,b=(n.hi.xyz-p)*inv;
+        vec3 lo=min(a,b),hi=max(a,b);
+        if(max(max(lo.x,lo.y),max(.00008,lo.z))>min(min(hi.x,hi.y),min(limit,hi.z))){
+            i=n.range.z;continue;
+        }
+        for(int j=n.range.x;j<n.range.x+n.range.y;j++){
+            Tri t=obstacles[j]; if(int(t.a.w)==own)continue;
+            vec3 h=cross(d,t.f.xyz);float det=dot(t.e.xyz,h);
+            if(abs(det)<1.e-8)continue;
+            vec3 s=p-t.a.xyz;float u=dot(s,h)/det;if(u<0.||u>1.)continue;
+            vec3 q=cross(s,t.e.xyz);float v=dot(d,q)/det;if(v<0.||u+v>1.)continue;
+            float dist=dot(t.f.xyz,q)/det;if(dist>.00008&&dist<limit)return true;
+        }
+        i++;
+    }
+    return false;
+}
+float fresnel(float c,float ct,float a,float b){
+    vec2 k=vec2(a*c,b*c),m=vec2(b*ct,a*ct);
+    vec2 r=(k-m)/max(k+m,vec2(1.e-8)); return dot(r,r)*.5;
+}
+void deposit(vec3 p,vec3 d,float energy,float lengthMm,bool frontSurface){
+    if(d.y>=-.000001)return;
+    float t=(floorY-p.y)/d.y;
+    vec2 uv=(p.xz+d.xz*t)/width+.5;
+    if(t<=0.||any(lessThan(uv,vec2(0)))||any(greaterThanEqual(uv,vec2(1))))return;
+    if(occluded(p,d,t))return;
+    ivec2 pixel=ivec2(uv*size);int id=3*(pixel.y*size+pixel.x);
+    float e=energy*16777216.;
+    if(frontSurface)atomicAdd(flux[id],uint(e+.5));
+    else{
+        atomicAdd(flux[id+1],uint(e+.5));
+        atomicAdd(flux[id+2],uint(e*exp(-lengthMm/5.)+.5));
+    }
+}
+void main(){
+    uint id=gl_GlobalInvocationID.x;if(id>=uint(shots))return;
+    rng=id+uint(own)*89321u+441u;
+    float pick=random01();int low=0,high=triangleCount-1;
+    while(low<high){int m=(low+high)/2;if(surface[m].a.w<pick)low=m+1;else high=m;}
+    Tri t=surface[low];vec3 n=normalize(cross(t.e.xyz,t.f.xyz));
+    float u=random01(),phi=random01()*6.2831853;
+    float sine=u<.3?.121869*sqrt(u/.3):.484810*sqrt((u-.3)/.7);
+    vec2 sl=key+spread*sine/sqrt(1.-sine*sine)*vec2(cos(phi),sin(phi));
+    vec3 d=normalize(vec3(sl.x,-1.,sl.y));float c=clamp(-dot(d,n),0.,1.);
+    if(c<=0.)return;
+    float w=sqrt(random01()),v=random01();vec3 p=t.a.xyz+w*((1.-v)*t.e.xyz+v*t.f.xyz);
+    if(occluded(p,-d,120.))return;
+    float power=area*c/(-d.y*float(shots)*pow(width/float(size),2.));
+    float ct=sqrt(1.-(1.-c*c)/(ior*ior));float front=fresnel(c,ct,1.,ior);
+    deposit(p,reflect(d,n),power*front,0.,true);
+    d=refract(d,n,1./ior);float lengthMm=0.;
+    for(int k=0;k<40;k++){
+        float best=1.e12;int side=-1;
+        for(int j=0;j<faceCount;j++){
+            vec4 f=planes[j];float den=dot(d,f.xyz);if(den<.000001)continue;
+            float dist=(f.w-dot(p,f.xyz))/den;if(dist>.00008&&dist<best){side=j;best=dist;}
+        }
+        if(side<0)break;
+        p+=d*best;lengthMm+=best;n=planes[side].xyz;c=clamp(dot(d,n),0.,1.);
+        float cosine2=1.-ior*ior*(1.-c*c);
+        if(cosine2>0.&&random01()>fresnel(c,sqrt(cosine2),ior,1.)){
+            deposit(p,refract(d,-n,ior),power*(1.-front),lengthMm,false);break;
+        }
+        d=reflect(d,n);
+    }
+}

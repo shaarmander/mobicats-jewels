@@ -1,0 +1,42 @@
+[
+  {
+    "id": "softbox",
+    "name": "Studio softbox",
+    "environment": "/assets/lights/softbox.hdr",
+    "rotationY": 0.0,
+    "exposure": 0.98,
+    "stageColor": "#b3b1a6",
+    "backgroundColor": "#e1e2da",
+    "compactEnvironment": "/assets/lights/softbox-compact.hdr"
+  },
+  {
+    "id": "spotlights",
+    "name": "Jewelry spotlights",
+    "environment": "/assets/lights/spotlights.hdr",
+    "rotationY": -0.18,
+    "exposure": 1.0,
+    "stageColor": "#868a90",
+    "backgroundColor": "#b9bfc7",
+    "compactEnvironment": "/assets/lights/spotlights-compact.hdr"
+  },
+  {
+    "id": "gallery",
+    "name": "Warm gallery",
+    "environment": "/assets/lights/gallery.hdr",
+    "rotationY": 0.14,
+    "exposure": 0.96,
+    "stageColor": "#b2a597",
+    "backgroundColor": "#d9cec0",
+    "compactEnvironment": "/assets/lights/gallery-compact.hdr"
+  },
+  {
+    "id": "darkfield",
+    "name": "Darkfield",
+    "environment": "/assets/lights/darkfield.hdr",
+    "rotationY": 0.0,
+    "exposure": 1.07,
+    "stageColor": "#25282c",
+    "backgroundColor": "#363a40",
+    "compactEnvironment": "/assets/lights/darkfield-compact.hdr"
+  }
+]

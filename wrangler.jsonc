@@ -1,0 +1,7 @@
+{
+  "name":"mobicat-jewels",
+  "compatibility_date":"2026-11-17",
+  "workers_dev":false,
+  "routes":[{"pattern":"jewels.mobicat.club","custom_domain":true}],
+  "assets":{"directory":"./dist"}
+}

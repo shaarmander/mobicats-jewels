@@ -1,0 +1,50 @@
+{
+  "softbox": {
+    "file_bytes": 527612,
+    "mean": 0.7981,
+    "max": 14.058,
+    "p10_p50_p90_p99": [
+      0.0938,
+      0.4111,
+      1.4375,
+      4.9462
+    ],
+    "brightest_percent_area_above_4": 5.9437
+  },
+  "spotlights": {
+    "file_bytes": 441135,
+    "mean": 0.4084,
+    "max": 64.5897,
+    "p10_p50_p90_p99": [
+      0.0543,
+      0.2474,
+      0.4155,
+      3.3419
+    ],
+    "brightest_percent_area_above_4": 0.2078
+  },
+  "gallery": {
+    "file_bytes": 427269,
+    "mean": 0.4489,
+    "max": 11.1767,
+    "p10_p50_p90_p99": [
+      0.0674,
+      0.2069,
+      0.504,
+      2.5937
+    ],
+    "brightest_percent_area_above_4": 0.685
+  },
+  "darkfield": {
+    "file_bytes": 364669,
+    "mean": 0.3702,
+    "max": 11.8298,
+    "p10_p50_p90_p99": [
+      0.0607,
+      0.0665,
+      0.152,
+      8.037
+    ],
+    "brightest_percent_area_above_4": 2.7607
+  }
+}
