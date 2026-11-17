@@ -31,12 +31,13 @@ SAMPLES = 192
 EPS = 0.00002
 
 
-def load_ring(path):
+def load_ring(path, support=None):
     document = path.read_bytes()
     length = struct.unpack_from("<I", document, 12)[0]
     nodes = {n["name"]: n for n in json.loads(document[20 : 20 + length])["nodes"]}
     scene = trimesh.load(path, force="scene", process=False)
-    support = json.loads((ROOT / "ring-poses.json").read_text())[path.stem]
+    if support is None:
+        support = json.loads((ROOT / "ring-poses.json").read_text())[path.stem]
     pose = np.eye(4)
     pose[:3, :3] = Rotation.from_quat(support["rotation"]).as_matrix()
     pose[:3, 3] = support["translation"]

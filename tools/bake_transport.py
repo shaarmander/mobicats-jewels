@@ -18,9 +18,9 @@ class FloorBaker:
         )
         self.output = self.gl.buffer(reserve=SIDE * SIDE * 12)
 
-    def render(self, path):
+    def render(self, path, support=None):
         gl, shader = self.gl, self.shader
-        triangles, roles, gems = load_ring(path)
+        triangles, roles, gems = load_ring(path, support)
         floor_y = triangles[:, :, 1].min() - 0.015
         base = ROOT / "floors" / (path.stem + ".png")
         mask = gaussian_filter(direct(triangles, floor_y).mean(axis=0), 0.65)

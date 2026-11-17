@@ -36,9 +36,9 @@ The production build is a static site in `dist/` and can be served from any web 
 
 The Three.js / WebGL 2 renderer follows refracted and reflected rays through each stone’s facet planes. Light absorption depends on distance inside the stone. Shared HDR studio lighting and local reflection probes shade the polished casting. Directional floor caustics are baked for each reference setting and cut, then adjusted for light direction, material and center-stone size at runtime.
 
-During camera motion, depth of field uses a single shaded view and a depth-aware aperture filter. When the camera rests, devices with floating-point render targets progressively add 24 optical views. The refitted ring rests on the floor as the center weight changes. Carat adjustments are a visual fitting approximation.
+During camera motion, depth of field uses a single shaded view and a depth-aware aperture filter. When the camera rests, devices with floating-point render targets progressively add 24 optical views. The refitted ring rests on the floor as the center weight changes. Carat adjustments are a visual fitting approximation. The center setting uses tapered claws and a scalloped gallery. The offline pipeline fits each claw to the crown of its cut before welding the setting to the band.
 
-The `tools/` directory contains the optional offline asset pipeline. Regenerating native CAD starts with a Gemmo Studio source tree containing `crates/gemmo_core`. Running or modifying the web viewer uses the assets in this repository. npm prepares the local tracking runtime before development and production builds. The browser loads the hand model and WebAssembly runtime when someone opens try-on.
+The `tools/` directory contains the optional offline asset pipeline. Regenerating native CAD starts with a Gemmo Studio source tree containing `crates/gemmo_core`. Running or modifying the web viewer uses the assets in this repository. npm prepares the local tracking runtime before development and production builds. The browser loads the hand model and WebAssembly runtime when someone opens try-on. The try-on uses the visible ring finger to center the band, estimates roll from the palm, and filters position, rotation and diameter separately. A small local image sample refines the fit when both finger edges are distinct.
 
 ## License
 

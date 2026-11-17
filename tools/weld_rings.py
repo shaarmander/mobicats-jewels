@@ -5,6 +5,9 @@ from pathlib import Path
 import bpy
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from basket import basket, shells
+
 
 def shoulder_rail(angles, radius, height, section):
     points = np.stack(
@@ -51,107 +54,46 @@ def solder_pin(start, end, radius):
     return verts.tolist(), faces
 
 
-def round_shells(part, anchor_feet=False):
-    """Recover the generating circles of native ten-sided claws/beads and eight-sided gallery rails."""
-    verts = np.asarray(part["vertices"])
-    faces = np.asarray(part["triangles"])
-    ends = np.arange(len(verts))
-    np.maximum.at(ends, faces.min(axis=1), faces.max(axis=1))
-    breaks = np.flatnonzero(np.maximum.accumulate(ends) == np.arange(len(verts))) + 1
-    angles = math.tau * np.arange(40) / 40
-    for group in np.split(verts, breaks[:-1]):
-        bead = part["name"] == "pave-beads"
-        gallery = False
-        # The gallery loop is the final 48 x 8 vertex shell of every head.
-        if not bead:
-            gallery = len(group) == 48 * 8
-        if bead:
-            center = (group[-2] + group[-1]) * 0.5
-            radius = np.linalg.norm(group[-1] - center)
-            lat = np.pi * np.arange(1, 24) / 24
-            rings = np.stack(
-                np.broadcast_arrays(
-                    np.sin(lat[:, None]) * np.cos(angles),
-                    np.cos(lat[:, None]),
-                    np.sin(lat[:, None]) * np.sin(angles),
-                ),
-                axis=-1,
-            )
-            rings = center + radius * rings
-            poles = group[-2:]
-        else:
-            n = 8 if gallery else 10
-            raw = (group if gallery else group[:-2]).reshape(-1, n, 3)
-            mid = raw.mean(axis=1)
-            original = math.tau * np.arange(n) / n
-            ax = 2 * np.einsum("j,ijk->ik", np.cos(original), raw) / n
-            ay = 2 * np.einsum("j,ijk->ik", np.sin(original), raw) / n
-            rings = (
-                mid[:, None, :]
-                + ax[:, None, :] * np.cos(angles)[None, :, None]
-                + ay[:, None, :] * np.sin(angles)[None, :, None]
-            )
-            if not gallery:
-                poles = group[-2:]
-                if anchor_feet:
-                    # A knife-edge shoulder falls away under the outer part of
-                    # the claw foot. Carry each foot into the solid shank core.
-                    foot = mid[1]
-                    radial = foot.copy()
-                    radial[2] = 0
-                    radial /= np.linalg.norm(radial)
-                    socket = 8.94 * radial
-                    socket[2] = np.clip(foot[2] * 0.3, -0.35, 0.35)
-                    if np.linalg.norm(foot - socket) > 0.05:
-                        yield solder_pin(socket, foot + 0.16 * radial, 0.41)
-                # The source hemispheres have only one latitude; reconstruct the dome analytically.
-                phi = np.arange(1, 10) * math.pi / 20
-                start, end = rings[1] - mid[1], rings[-2] - mid[-2]
-                cap0 = (
-                    mid[1]
-                    + np.sin(phi[::-1])[:, None, None] * (poles[0] - mid[1])
-                    + np.cos(phi[::-1])[:, None, None] * start
-                )
-                cap1 = (
-                    mid[-2]
-                    + np.sin(phi)[:, None, None] * (poles[1] - mid[-2])
-                    + np.cos(phi)[:, None, None] * end
-                )
-                rings = np.concatenate((cap0, rings[1:-1], cap1))
-        nr, nc = rings.shape[:2]
-        ring, col = np.meshgrid(
-            np.arange(nr if gallery else nr - 1), np.arange(nc), indexing="ij"
-        )
-        a = ring * nc + col
-        b = ring * nc + (col + 1) % nc
-        c = ((ring + 1) % nr) * nc + col
-        d = ((ring + 1) % nr) * nc + (col + 1) % nc
-        tri = np.concatenate(
-            (
-                np.stack((a, c, d), -1).reshape(-1, 3),
-                np.stack((a, d, b), -1).reshape(-1, 3),
-            )
-        )
-        v = rings.reshape(-1, 3)
-        if not gallery:
-            j = np.arange(nc)
-            k = (j + 1) % nc
-            if bead and poles[0, 1] < poles[1, 1]:
-                poles = poles[::-1]
-            start = len(v)
-            end = start + 1
-            tri = np.concatenate(
-                (
-                    tri,
-                    np.stack((j * 0 + start, j, k), -1),
-                    np.stack((j * 0 + end, (nr - 1) * nc + k, (nr - 1) * nc + j), -1),
-                )
-            )
-            v = np.concatenate((v, poles))
+def round_beads(part):
+    """Reconstruct polished pave beads from their diametrically opposite poles."""
+    phi = math.tau * np.arange(40) / 40
+    lat = np.pi * np.arange(1, 24) / 24
+    unit = np.stack(
+        np.broadcast_arrays(
+            np.sin(lat[:, None]) * np.cos(phi),
+            np.cos(lat[:, None]),
+            np.sin(lat[:, None]) * np.sin(phi),
+        ),
+        axis=-1,
+    )
+    rows, cols = unit.shape[:2]
+    i, j = np.meshgrid(np.arange(rows - 1), np.arange(cols), indexing="ij")
+    a = i * cols + j
+    b = i * cols + (j + 1) % cols
+    index = np.arange(cols)
+    last = (rows - 1) * cols
+    top = rows * cols
+    faces = np.concatenate(
+        [
+            np.stack((a, a + cols, b + cols), -1).reshape(-1, 3),
+            np.stack((a, b + cols, b), -1).reshape(-1, 3),
+            np.stack((0 * index + top, index, (index + 1) % cols), 1),
+            np.stack((0 * index + top + 1, last + (index + 1) % cols, last + index), 1),
+        ]
+    )
+    for group in shells(part):
+        poles = group[-2:]
+        if poles[0, 1] < poles[1, 1]:
+            poles = poles[::-1]
+        center = poles.mean(axis=0)
+        radius = np.linalg.norm(poles[0] - center)
+        verts = np.concatenate([(center + radius * unit).reshape(-1, 3), poles])
         volume = np.einsum(
-            "ij,ij->", v[tri[:, 0]], np.cross(v[tri[:, 1]], v[tri[:, 2]])
+            "ij,ij->",
+            verts[faces[:, 0]],
+            np.cross(verts[faces[:, 1]], verts[faces[:, 2]]),
         )
-        yield v.tolist(), (tri if volume > 0 else tri[:, ::-1]).tolist()
+        yield verts.tolist(), (faces if volume > 0 else faces[:, ::-1]).tolist()
 
 
 SCULPTED = {
@@ -267,10 +209,21 @@ def sculpted_band(style):
 def metal_parts(data, setting):
     parts = []
     for p in data["parts"]:
-        if p["name"].startswith("head") or p["name"] == "pave-beads":
-            parts.extend(
-                round_shells(p, setting == "knife" and p["name"].startswith("head"))
+        if p["name"].startswith("head"):
+            center = p["name"] == "head-centre"
+            stone = next(
+                stone
+                for stone in data["stones"]
+                if (center and stone["role"] == "center")
+                or (
+                    not center
+                    and stone["role"] == "side"
+                    and (stone["translation"][0] > 0) == p["name"].endswith("right")
+                )
             )
+            parts.extend(basket(p, stone, setting))
+        elif p["name"] == "pave-beads":
+            parts.extend(round_beads(p))
         elif setting not in SCULPTED | {"split"} or p["name"] != "shank":
             parts.append((p["vertices"], p["triangles"]))
     center = data["stones"][0]
