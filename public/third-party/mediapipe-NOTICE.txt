@@ -1,0 +1,7 @@
+MediaPipe Tasks Vision is provided by Google under Apache License 2.0.
+An unmodified copy of the license accompanies this notice.
+
+The local Hand Landmarker float16 v1 model bundle is distributed by Google.
+Model documentation: https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker
+Model download: https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
+SHA-256: fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1

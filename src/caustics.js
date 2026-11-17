@@ -75,7 +75,29 @@ export class CausticMap {
     this.scene.add(new T.Mesh(new T.PlaneGeometry(2, 2), material));
     this.camera = new T.Camera();
   }
-  setGems(gems) {
+  setGems(gems, accents = []) {
+    // Floor transport has a shared accent atlas. Mix transmission by stone area
+    // when the individual shoulder stones have different materials.
+    if (accents.length) {
+      const area = accents.reduce((sum, a) => sum + a.area, 0);
+      const mean = (fn) =>
+        accents.reduce((sum, a) => sum + a.area * fn(a.gem), 0) / area;
+      const mixed = {
+        ior: mean((g) => g.ior),
+        opticalDensity: gems[1].opticalDensity.map((row, i) =>
+          row.map(
+            (_, j) =>
+              -Math.log(
+                Math.max(
+                  1e-9,
+                  mean((g) => Math.exp(-g.opticalDensity[i][j])),
+                ),
+              ),
+          ),
+        ),
+      };
+      gems = [gems[0], mixed];
+    }
     this.uniforms.density.value = gems.flatMap(densities);
     this.uniforms.family.value.fromArray(
       gems.map((g) => T.MathUtils.clamp((g.ior - 1.59) / 0.827, 0, 1)),

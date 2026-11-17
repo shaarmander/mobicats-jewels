@@ -17,7 +17,7 @@
   <body>
     <canvas
       id="stage"
-      aria-label="Interactive jewelry stage. Drag to orbit, scroll or pinch to zoom."
+      aria-label="Interactive jewelry stage. Tap a stone or the band to edit. Drag to orbit, scroll or pinch to zoom."
     ></canvas>
     <header class="brand">
       <a href="https://mobicat.club/" aria-label="Mobicat">
@@ -50,6 +50,13 @@
         aria-controls="lens-panel"
       >
         <i data-icon="aperture"></i>
+      </button>
+      <button
+        id="try-on"
+        disabled
+        aria-label="Try this ring on with your camera"
+      >
+        <i data-icon="camera"></i><span>Try on</span>
       </button>
     </div>
     <aside id="design" class="card design">
@@ -169,7 +176,7 @@
     </aside>
     <aside id="library" class="card flyout library" hidden>
       <div class="card-head">
-        <h2>Gem library</h2>
+        <h2 id="gem-heading">Gem library</h2>
         <button
           class="bare"
           data-close="library"
@@ -190,6 +197,50 @@
       <div id="gem-list" role="group" aria-label="Gemstones"></div>
       <div class="list-count" id="gem-count"></div>
     </aside>
+    <span id="part-mark" hidden aria-hidden="true"></span>
+    <aside id="setting-picker" class="card flyout library" hidden>
+      <div class="card-head">
+        <h2>Setting metal</h2>
+        <button
+          class="bare"
+          data-close="setting-picker"
+          aria-label="Close setting editor"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <div id="picked-metals" class="swatches"></div>
+      <span id="picked-metal-name"></span>
+      <button id="picked-styles" class="library-btn">
+        <i data-icon="grid"></i>Change ring style
+      </button>
+    </aside>
+    <section
+      id="try-panel"
+      hidden
+      role="dialog"
+      aria-label="Camera try-on"
+      aria-modal="true"
+    >
+      <div class="try-head">
+        <strong>Ring try-on</strong
+        ><button id="try-close" aria-label="Return to studio">Done</button>
+      </div>
+      <div class="try-controls">
+        <span id="try-status" role="status"></span>
+        <label id="try-fit" hidden
+          >Visual fit
+          <input
+            id="try-size"
+            type="range"
+            min="75"
+            max="125"
+            value="100"
+            aria-label="Visual ring fit"
+        /></label>
+        <button id="try-retry" hidden>Try again</button>
+      </div>
+    </section>
     <aside class="card flyout top-panel" id="light-panel" hidden>
       <div class="card-head">
         <h2>Lighting</h2>
@@ -247,6 +298,7 @@
     <div class="object-label">
       <h2 id="design-title">Emerald trilogy</h2>
       <span id="design-detail">Emerald cut · 18k yellow gold</span>
+      <small class="part-hint">Tap a stone or the band to edit</small>
     </div>
     <div class="dock" role="toolbar" aria-label="Stage controls">
       <button id="mobile-edit" class="mobile-only" aria-label="Edit ring">

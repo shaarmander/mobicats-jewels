@@ -9,3 +9,4 @@ __pycache__/
 .dev.vars.*
 .DS_Store
 public/assets/floors/*-key.png
+public/tracking-runtime/

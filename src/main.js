@@ -6,6 +6,7 @@ import { JewelryStudio } from "./studio.js";
 
 const $ = (id) => document.getElementById(id);
 const icons = {
+  camera: '<path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="4"/>',
   star: '<path d="m12 3 2.8 5.7 6.3.9-4.6 4.5 1.1 6.3-5.6-3-5.6 3 1.1-6.3L3 9.6l6.2-.9z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2m0-14-2 2M7 17l-2 2"/>',
   aperture:
@@ -44,8 +45,33 @@ function notice(text) {
   $("notice").textContent = text;
   $("notice").hidden = !text;
 }
-const panels = ["styles", "cuts", "library", "light-panel", "lens-panel"];
-function panel(id) {
+const panels = [
+  "styles",
+  "cuts",
+  "library",
+  "setting-picker",
+  "light-panel",
+  "lens-panel",
+];
+function panel(id, hit = null) {
+  if (studio) {
+    const mark = $("part-mark");
+    studio.selectedPart = hit
+      ? {
+          object: hit.object,
+          anchor: hit.object.worldToLocal(hit.point.clone()),
+          mark,
+        }
+      : null;
+    mark.hidden = !hit;
+    document.body.classList.toggle("part-edit", !!hit);
+    if (hit) studio.scheduleFrame();
+  }
+  $("gem-heading").textContent = hit
+    ? ({ center: "Center stone", side: "Side stone", pave: "Pavé stone" }[
+        hit.object.userData.role
+      ] ?? "Gem library")
+    : "Gem library";
   for (const p of panels) $(p).hidden = p !== id;
   for (const [a, b] of [
     ["library-open", "library"],
@@ -58,7 +84,7 @@ function panel(id) {
   if (id === "library") {
     $("gem-search").value = "";
     gemList();
-    if (matchMedia("(pointer:fine)").matches) $("gem-search").focus();
+    if (!hit && matchMedia("(pointer:fine)").matches) $("gem-search").focus();
   }
 }
 function togglePanel(id) {
@@ -95,6 +121,11 @@ function paint() {
     (el) => el.dataset.target === target,
   );
   $("metal-name").textContent = metal.name;
+  $("picked-metal-name").textContent = metal.name;
+  pressed(
+    document.querySelectorAll("[data-picked-metal]"),
+    (el) => el.dataset.pickedMetal === s.metal,
+  );
   $("light-title").textContent = rig.name;
   $("light-toggle").setAttribute("aria-label", "Lighting, " + rig.name);
   document.querySelector('[data-target="accent"]').disabled =
@@ -146,7 +177,13 @@ function gemList() {
     const el = document.createElement("button");
     el.className = "gem-option";
     el.dataset.gem = g.id;
-    el.setAttribute("aria-pressed", String(studio.state[target] === g.id));
+    el.setAttribute(
+      "aria-pressed",
+      String(
+        (studio.accentOverrides.get(studio.selectedPart?.object.name) ??
+          studio.state[target]) === g.id,
+      ),
+    );
     const sw = document.createElement("span");
     sw.className = "facet-chip";
     sw.style.setProperty("--stone", g.color);
@@ -155,9 +192,13 @@ function gemList() {
     el.append(sw, document.createTextNode(g.name), family);
     el.onclick = () => {
       const s = studio.state;
+      const pickedAccent = target === "accent" && studio.selectedPart;
+      if (pickedAccent)
+        studio.accentOverrides.set(pickedAccent.object.name, g.id);
+      else if (target === "accent") studio.accentOverrides.clear();
       studio.setGems(
         target === "center" ? g.id : s.center,
-        target === "accent" ? g.id : s.accent,
+        target === "accent" && !pickedAccent ? g.id : s.accent,
       );
       panel(null);
       paint();
@@ -171,6 +212,7 @@ function gemList() {
 }
 async function design(setting, cut) {
   const token = ++request;
+  $("try-on").disabled = true;
   notice("Loading setting…");
   try {
     if ((await studio.setDesign(setting, cut)) && token === request) {
@@ -185,6 +227,8 @@ async function design(setting, cut) {
       notice("Setting failed to load. Select it again to retry.");
     }
     console.error(e);
+  } finally {
+    if (token === request) $("try-on").disabled = !studio.model;
   }
 }
 let lightRequest = 0;
@@ -209,7 +253,44 @@ function tool(mode) {
   }
   paint();
 }
+let trySession = null,
+  tryOpening = false;
+async function startTryOn() {
+  if (tryOpening || trySession) return;
+  tryOpening = true;
+  try {
+    const { TryOn } = await import("./try-on.js");
+    panel(null);
+    $("design").classList.remove("mobile-open");
+    trySession = new TryOn(studio, () => {
+      trySession = null;
+      $("try-on").focus({ preventScroll: true });
+    });
+    tryOpening = false;
+    await trySession.start();
+  } catch (e) {
+    console.error(e);
+    notice("Try-on could not load. Tap Try on to retry.");
+  } finally {
+    tryOpening = false;
+  }
+}
 function bind() {
+  $("try-on").onclick = startTryOn;
+  $("try-close").onclick = () => trySession?.close();
+  $("try-retry").onclick = () => {
+    trySession?.close();
+    startTryOn();
+  };
+  $("picked-styles").onclick = () => panel("styles");
+  studio.onPart = (hit) => {
+    document.body.classList.add("part-used");
+    const role = hit.object.userData.role;
+    const metal = role === "band" || role === "head";
+    if (!metal) target = role === "center" ? "center" : "accent";
+    paint();
+    panel(metal ? "setting-picker" : "library", hit);
+  };
   for (const st of lib.settings) {
     const b = document.createElement("button");
     b.dataset.setting = st.id;
@@ -251,6 +332,15 @@ function bind() {
       paint();
     };
     $("metals").append(b);
+    const picked = b.cloneNode(true);
+    delete picked.dataset.metal;
+    picked.dataset.pickedMetal = m.id;
+    picked.onclick = () => {
+      studio.setMetal(m.id);
+      panel(null);
+      paint();
+    };
+    $("picked-metals").append(picked);
   }
   for (const r of rigs) {
     const b = document.createElement("button");
@@ -341,6 +431,10 @@ function bind() {
   $("zoom-out").onclick = () => studio.zoom(1.16);
   $("zoom-in").onclick = () => studio.zoom(1 / 1.16);
   window.addEventListener("keydown", (e) => {
+    if (trySession) {
+      if (e.key === "Escape") trySession.close();
+      return;
+    }
     if (e.key === "Escape") {
       panel(null);
       $("design").classList.remove("mobile-open");
@@ -382,6 +476,7 @@ try {
     studio.setDesign("trilogy", "emerald"),
   ]);
   paint();
+  $("try-on").disabled = false;
   notice("");
 } catch (e) {
   console.error(e);

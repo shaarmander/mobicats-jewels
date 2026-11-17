@@ -977,3 +977,143 @@ input[type="range"] {
     z-index: 1;
   }
 }
+#part-mark {
+  position: fixed;
+  z-index: 1;
+  pointer-events: none;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid #fffbe9;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px #324f49,
+    0 0 5px #132b2477;
+}
+#setting-picker {
+  padding-bottom: 14px;
+}
+#picked-metal-name {
+  font-size: 12px;
+}
+#picked-styles {
+  justify-content: center;
+  min-height: 38px;
+}
+#picked-styles svg {
+  margin-left: 0;
+}
+#try-on {
+  gap: 5px;
+  white-space: nowrap;
+}
+.trying-on
+  > :is(
+    .brand,
+    .top-actions,
+    .card,
+    .object-label,
+    .dock,
+    .status,
+    #notice,
+    #part-mark
+  ) {
+  display: none !important;
+}
+#try-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  color: #fff;
+  touch-action: none;
+}
+#try-panel video {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.try-head,
+.try-controls {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #16231fee;
+}
+.try-head {
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+}
+.try-head strong {
+  font: normal 20px var(--serif);
+}
+.try-controls {
+  bottom: max(14px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 22px);
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 14px;
+}
+#try-panel button {
+  min-height: 40px;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #f0eee3;
+  color: #21392e;
+}
+#try-fit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+#try-fit input {
+  width: 85px;
+  height: 25px;
+}
+@media (max-width: 700px), (pointer: coarse) and (max-height: 520px) {
+  .part-edit .library {
+    max-height: 35dvh;
+  }
+  .part-edit .library .gem-option {
+    min-height: 40px;
+  }
+  #try-on {
+    min-width: 48px;
+    padding-inline: 4px;
+  }
+  #try-on svg {
+    display: none;
+  }
+}
+@media (max-width: 355px) {
+  .brand {
+    gap: 2px;
+  }
+  .brand .brand-mark {
+    width: 49px;
+  }
+  .brand h1 {
+    font-size: 15px;
+  }
+  #try-on {
+    min-width: 44px;
+  }
+}
+.part-hint {
+  display: none;
+}
+@media (pointer: coarse) {
+  body:not(.part-used) .part-hint {
+    display: block;
+    font-size: 11px;
+    margin-top: 4px;
+  }
+}

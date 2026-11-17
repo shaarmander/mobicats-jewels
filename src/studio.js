@@ -67,6 +67,7 @@ export class JewelryStudio {
     this.scene.add(this.assembly);
     this.model = null;
     this.stones = [];
+    this.accentOverrides = new Map();
     this.materials = [];
     this.assets = new Map();
     this.lightCache = new Map();
@@ -287,6 +288,7 @@ export class JewelryStudio {
     const stamp = ++this.revision;
     const asset = await this.geometry(setting, cut);
     if (stamp !== this.revision) return false;
+    if (this.state.setting !== setting) this.accentOverrides.clear();
     Object.assign(this.state, { setting, cut });
     if (this.model) this.assembly.remove(this.model);
     this.materials.forEach((m) => m.dispose());
@@ -407,14 +409,21 @@ export class JewelryStudio {
     const colors = [center, accent].map((id) =>
       this.lib.gems.find((g) => g.id === id),
     );
-    this.causticMap.setGems(colors);
+    const accentMix = [];
     this.fitCenter(colors[0]);
     const shared = new Map();
     for (const mesh of this.stones) {
       const isCenter = mesh.userData.role === "center",
-        gem = colors[isCenter ? 0 : 1];
+        gem =
+          this.accentOverrides.get(mesh.name) && !isCenter
+            ? this.lib.gems.find(
+                (g) => g.id === this.accentOverrides.get(mesh.name),
+              )
+            : colors[isCenter ? 0 : 1];
+      if (!isCenter && this.accentOverrides.size)
+        accentMix.push({ gem, area: mesh.scale.x ** 2 });
       const side = mesh.position.x > 0 ? 1 : 0;
-      const key = mesh.geometry.uuid + (isCenter ? "center" : side);
+      const key = mesh.geometry.uuid + (isCenter ? "center" : side) + gem.id;
       let material = shared.get(key);
       if (!material) {
         material = this.materials.find((m) => m.userData.key === key);
@@ -441,6 +450,12 @@ export class JewelryStudio {
         material.uniformsNeedUpdate = true;
       };
     }
+    this.causticMap.setGems(colors, accentMix);
+    this.materials = this.materials.filter((m) => {
+      if (shared.has(m.userData.key)) return true;
+      m.dispose();
+      return false;
+    });
     this.invalidate(true);
   }
   async setLight(id) {
@@ -553,6 +568,50 @@ export class JewelryStudio {
       ray(e);
       return this.model ? this.ray.intersectObject(this.model, true)[0] : null;
     };
+    // A selection is committed on release, after ruling out orbit and pinch.
+    const pointers = new Set();
+    let tap;
+    canvas.addEventListener("pointerdown", (e) => {
+      pointers.add(e.pointerId);
+      tap =
+        pointers.size === 1 && e.button === 0 && this.state.tool === "orbit"
+          ? [e.clientX, e.clientY]
+          : null;
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (tap && Math.hypot(e.clientX - tap[0], e.clientY - tap[1]) > 7)
+        tap = null;
+    });
+    canvas.addEventListener("pointerup", (e) => {
+      pointers.delete(e.pointerId);
+      if (
+        tap &&
+        !pointers.size &&
+        this.state.tool === "orbit" &&
+        !this.tryingOn &&
+        Math.hypot(e.clientX - tap[0], e.clientY - tap[1]) <= 7
+      ) {
+        let part = hit(e);
+        if (!part && e.pointerType === "touch") {
+          for (const [x, y] of [
+            [0, -4],
+            [-4, 0],
+            [4, 0],
+            [0, 4],
+          ]) {
+            part = hit({ clientX: e.clientX + x, clientY: e.clientY + y });
+            if (part) break;
+          }
+        }
+        if (part) this.onPart?.(part);
+      }
+      tap = null;
+    });
+    for (const event of ["pointercancel", "lostpointercapture"])
+      canvas.addEventListener(event, (e) => {
+        pointers.delete(e.pointerId);
+        if (!pointers.size) tap = null;
+      });
     canvas.addEventListener("pointerdown", (e) => {
       if (e.button !== 0 || this.state.tool === "orbit") return;
       const found = hit(e);
@@ -661,6 +720,7 @@ export class JewelryStudio {
   }
   frame(now) {
     this.raf = 0;
+    if (this.tryingOn) return;
     const dt = now - this.lastTime;
     this.lastTime = now;
     this.controls.autoRotate = this.state.spin;
@@ -681,6 +741,13 @@ export class JewelryStudio {
     const focus = -this.focusPoint
       .clone()
       .applyMatrix4(this.camera.matrixWorldInverse).z;
+    if (this.selectedPart) {
+      const { object, anchor, mark } = this.selectedPart;
+      const screen = object.localToWorld(anchor.clone()).project(this.camera);
+      const rect = this.canvas.getBoundingClientRect();
+      mark.style.left = rect.left + (0.5 + screen.x * 0.5) * rect.width + "px";
+      mark.style.top = rect.top + (0.5 - screen.y * 0.5) * rect.height + "px";
+    }
     const refining = this.lens.draw(
       this.scene,
       focus,
