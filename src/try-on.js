@@ -1,4 +1,5 @@
 import * as T from "three";
+import { RingFingerPose } from "./hand-pose.js";
 import { HandTracker } from "./hand-tracker.js";
 
 const el = (id) => document.getElementById(id);
@@ -21,14 +22,13 @@ export class TryOn {
     this.video = document.createElement("video");
     this.video.autoplay = this.video.muted = this.video.playsInline = true;
     this.input = document.createElement("canvas");
-    this.ctx = this.input.getContext("2d", { alpha: false });
+    this.ctx = this.input.getContext("2d", {
+      alpha: false,
+      willReadFrequently: true,
+    });
     this.crop = new T.Vector4();
-    this.targetPosition = new T.Vector3();
-    this.targetRotation = new T.Quaternion();
-    this.targetScale = 1;
-    this.detectedAt = -Infinity;
+    this.finger = new RingFingerPose();
     this.lastFrame = -1;
-    this.lastTime = 0;
     this.frame = this.frame.bind(this);
     this.hide = () => {
       if (document.hidden) this.close();
@@ -173,62 +173,9 @@ export class TryOn {
       bottom: -h / 2,
     });
     this.camera.updateProjectionMatrix();
-    this.detectedAt = -Infinity;
+    this.finger.reset();
     this.layoutVersion = (this.layoutVersion ?? 0) + 1;
     return true;
-  }
-  pose(result, time) {
-    const image = result?.landmarks?.[0],
-      world = result?.worldLandmarks?.[0];
-    if (!image || !world) return;
-    const point = (i) => new T.Vector3(world[i].x, -world[i].y, -world[i].z);
-    const pixel = (i) =>
-      new T.Vector2(
-        (image[i].x - 0.5) * this.width,
-        (0.5 - image[i].y) * this.height,
-      );
-    const axis = point(14).sub(point(13)).normalize();
-    const back = point(17).sub(point(5)).cross(axis);
-    if (back.lengthSq() < 0.000001) return;
-    back.normalize();
-    const label = result.handedness?.[0]?.[0]?.categoryName;
-    const fresh = time - this.detectedAt > 350 || label !== this.hand;
-    if (fresh) this.backSign = back.z < 0 ? -1 : 1;
-    this.hand = label;
-    back.multiplyScalar(this.backSign);
-    const across = new T.Vector3().crossVectors(back, axis);
-    this.targetRotation.setFromRotationMatrix(
-      new T.Matrix4().makeBasis(across, back, axis),
-    );
-    const anchor = pixel(13).lerp(pixel(14), 0.3);
-    this.targetPosition.set(anchor.x, anchor.y, 0);
-    // Estimate local pixels per metre from the projected palm and proximal bones.
-    let pixels = 0,
-      metres = 0;
-    for (const [a, b] of [
-      [5, 17],
-      [0, 9],
-      [13, 14],
-    ]) {
-      pixels += pixel(a).distanceTo(pixel(b));
-      const delta = point(a).sub(point(b));
-      metres += Math.hypot(delta.x, delta.y);
-    }
-    const spacing =
-      (point(13).distanceTo(point(9)) + point(13).distanceTo(point(17))) / 2;
-    this.targetScale = T.MathUtils.clamp(
-      (0.84 * spacing * pixels) / (Math.max(0.001, metres) * this.bandDiameter),
-      0.12,
-      Math.max(this.width, this.height) / 45,
-    );
-    this.detectedAt = time;
-    if (fresh) {
-      this.mount.position.copy(this.targetPosition);
-      this.mount.quaternion.copy(this.targetRotation);
-      this.mount.scale.setScalar(
-        (this.targetScale * Number(el("try-size").value)) / 100,
-      );
-    }
   }
   frame(now) {
     if (this.closed || this.failed) return;
@@ -261,7 +208,7 @@ export class TryOn {
         .detect(this.input, now)
         .then((result) => {
           if (!this.closed && !this.failed && version === this.layoutVersion)
-            this.pose(result, performance.now());
+            this.finger.update(result, now, this.width, this.height, this.ctx);
         })
         .catch(() => {
           if (!this.closed && !this.failed)
@@ -271,18 +218,14 @@ export class TryOn {
           this.busy = false;
         });
     }
-    const t = 1 - Math.exp(-Math.min(100, now - this.lastTime) / 45);
-    this.lastTime = now;
-    this.mount.visible = now - this.detectedAt < 280;
-    if (this.mount.visible) {
-      this.mount.position.lerp(this.targetPosition, t);
-      this.mount.quaternion.slerp(this.targetRotation, t);
-      const fitted = (this.targetScale * Number(el("try-size").value)) / 100;
-      this.mount.scale.setScalar(
-        T.MathUtils.lerp(this.mount.scale.x, fitted, t),
-      );
-      this.status("Tracking your ring finger");
-    } else if (this.ready) this.status(handPrompt);
+    this.finger.place(
+      this.mount,
+      now,
+      this.bandDiameter,
+      Number(el("try-size").value) / 100,
+    );
+    if (this.mount.visible) this.status("Tracking your ring finger");
+    else if (this.ready) this.status(handPrompt);
     this.studio.renderer.setRenderTarget(null);
     this.studio.renderer.render(this.scene, this.camera);
   }

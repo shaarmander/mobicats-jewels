@@ -168,10 +168,30 @@ function paint() {
   $("spin").setAttribute("aria-pressed", String(s.spin));
   $("spin").innerHTML = icon(s.spin ? "pause" : "play");
 }
+function chooseGem(g) {
+  const s = studio.state;
+  const pickedAccent = target === "accent" && studio.selectedPart;
+  if (pickedAccent) studio.accentOverrides.set(pickedAccent.object.name, g.id);
+  else if (target === "accent") studio.accentOverrides.clear();
+  studio.setGems(
+    target === "center" ? g.id : s.center,
+    target === "accent" && !pickedAccent ? g.id : s.accent,
+  );
+  panel(null);
+  paint();
+  $("library-open").focus();
+}
 function gemList() {
   const q = $("gem-search").value.trim().toLowerCase();
   const list = lib.gems.filter((g) =>
     (g.name + " " + g.family).toLowerCase().includes(q),
+  );
+  const selectedId =
+    studio.accentOverrides.get(studio.selectedPart?.object.name) ??
+    studio.state[target];
+  pressed(
+    document.querySelectorAll("[data-quick-gem]"),
+    (b) => b.dataset.quickGem === selectedId,
   );
   const buttons = list.map((g) => {
     const el = document.createElement("button");
@@ -190,20 +210,7 @@ function gemList() {
     const family = document.createElement("small");
     family.textContent = g.family;
     el.append(sw, document.createTextNode(g.name), family);
-    el.onclick = () => {
-      const s = studio.state;
-      const pickedAccent = target === "accent" && studio.selectedPart;
-      if (pickedAccent)
-        studio.accentOverrides.set(pickedAccent.object.name, g.id);
-      else if (target === "accent") studio.accentOverrides.clear();
-      studio.setGems(
-        target === "center" ? g.id : s.center,
-        target === "accent" && !pickedAccent ? g.id : s.accent,
-      );
-      panel(null);
-      paint();
-      $("library-open").focus();
-    };
+    el.onclick = () => chooseGem(g);
     return el;
   });
   $("gem-list").replaceChildren(...buttons);
@@ -291,6 +298,25 @@ function bind() {
     paint();
     panel(metal ? "setting-picker" : "library", hit);
   };
+  for (const [id, label] of [
+    ["natural-diamond", "Diamond"],
+    ["ruby", "Ruby"],
+    ["emerald", "Emerald"],
+    ["blue-sapphire", "Sapphire"],
+    ["amethyst", "Amethyst"],
+    ["citrine", "Citrine"],
+  ]) {
+    const gem = lib.gems.find((g) => g.id === id);
+    const button = document.createElement("button");
+    button.dataset.quickGem = id;
+    const swatch = document.createElement("span");
+    swatch.className = "facet-chip";
+    swatch.style.setProperty("--stone", gem.color);
+    button.append(swatch, label);
+    button.title = gem.name;
+    button.onclick = () => chooseGem(gem);
+    $("quick-gems").append(button);
+  }
   for (const st of lib.settings) {
     const b = document.createElement("button");
     b.dataset.setting = st.id;
