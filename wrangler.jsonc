@@ -1,7 +1,17 @@
 {
-  "name":"mobicat-jewels",
-  "compatibility_date":"2026-11-17",
-  "workers_dev":false,
-  "routes":[{"pattern":"jewels.mobicat.club","custom_domain":true}],
-  "assets":{"directory":"./dist"}
+  "name": "mobicat-jewels",
+  "compatibility_date": "2026-11-17",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "jewels.mobicat.club",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "main": "worker.js"
 }
