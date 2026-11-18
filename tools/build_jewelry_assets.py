@@ -18,6 +18,8 @@ import os
 import meshoptimizer
 import numpy as np
 from scipy.spatial import cKDTree
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 
 from lying_poses import build_poses
 from cut_icons import build_icons
@@ -193,7 +195,29 @@ def welded_geometry(source):
         raise ValueError(f"Metal triangle budget exceeded for {source.stem}")
     triangles = retriangulate_collinear_faces(positions, triangles)
     vertices, indices = np.unique(triangles, return_inverse=True)
-    return positions[vertices], normals[vertices], indices.reshape(-1, 3)
+    faces = indices.reshape(-1, 3)
+    graph = coo_matrix(
+        (
+            np.ones(faces.size, dtype=np.uint8),
+            (faces.ravel(), faces[:, [1, 2, 0]].ravel()),
+        ),
+        shape=(len(vertices), len(vertices)),
+    )
+    count, labels = connected_components(graph, directed=False)
+    if count > 1:
+        # Polishing can collapse a detached voxel into a microscopic closed
+        # speck. Discard sub-voxel debris, and report any detached setting part.
+        main = np.bincount(labels).argmax()
+        for part in range(count):
+            if (
+                part != main
+                and np.ptp(positions[vertices[labels == part]], axis=0).max() >= 0.043
+            ):
+                raise ValueError(f"Detached metal component in {source.stem}")
+        kept = triangles[labels[faces[:, 0]] == main]
+        vertices, indices = np.unique(kept, return_inverse=True)
+        faces = indices.reshape(-1, 3)
+    return positions[vertices], normals[vertices], faces
 
 
 class GLB:

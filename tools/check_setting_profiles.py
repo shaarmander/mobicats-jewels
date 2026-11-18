@@ -5,9 +5,57 @@ import argparse, struct, json, gzip, concurrent.futures
 from functools import partial
 import numpy as np
 from scipy.spatial import cKDTree
+from scipy.spatial.transform import Rotation
 
 root = Path(__file__).resolve().parents[1]
 from basket import basket
+
+
+def corner_cap_spread(vertices, faces, fields, center, shift, claws):
+    """Compare corresponding points on the four polished caps, in millimetres."""
+    inverse = Rotation.from_quat(center["rotation"]).inv()
+    local = inverse.apply(vertices - center["translation"])
+    triangles = local[faces]
+    patches = []
+    for path in claws:
+        tip = inverse.apply(path[[57, 60, 63]] - center["translation"])
+        signs = [np.sign(tip[-1, 0]), 1, np.sign(tip[-1, 2])]
+        samples = []
+        for point in tip:
+            # Cast upward from inside the tip. The first intersection follows
+            # the same claw even when an accent setting sits beside it.
+            a, b, c = (triangles[:, j] - point for j in range(3))
+            ba, ca = b - a, c - a
+            det = ba[:, 0] * ca[:, 2] - ba[:, 2] * ca[:, 0]
+            det[np.abs(det) < 1e-12] = np.nan
+            u = (-a[:, 0] * ca[:, 2] + a[:, 2] * ca[:, 0]) / det
+            v = (-ba[:, 0] * a[:, 2] + ba[:, 2] * a[:, 0]) / det
+            y = a[:, 1] + u * ba[:, 1] + v * ca[:, 1]
+            hits = np.where((u >= 0) & (v >= 0) & (u + v <= 1) & (y >= 0), y, np.inf)
+            index = np.argmin(hits)
+            if hits[index] > 0.9:
+                return float("inf")
+            weights = [1 - u[index] - v[index], u[index], v[index]]
+            ids = faces[index]
+            rest = weights @ local[ids]
+            deltas = inverse.apply(np.einsum("i,kij->kj", weights, fields[:, ids]))
+            deltas[0] -= inverse.apply(shift)
+            samples.append((rest, deltas))
+        patches.append((signs, samples))
+
+    worst = 0.0
+    for carats in (0.5, 1.5, 3.0):
+        scale = np.cbrt(carats / center["carats"])
+        for profile in range(1, 4):
+            caps = [
+                [
+                    (rest + delta[0] * (scale - 1) + delta[profile]) * signs
+                    for rest, delta in samples
+                ]
+                for signs, samples in patches
+            ]
+            worst = max(worst, np.ptp(caps, axis=0).max())
+    return float(worst)
 
 
 def audit(key, raw):
@@ -83,7 +131,11 @@ def audit(key, raw):
     d = json.loads((raw / (key + ".json")).read_bytes())
     center = next(s for s in d["stones"] if s["role"] == "center")
 
+    claws = []
+
     def record(kind, path, w, h):
+        if kind == "claw":
+            claws.append(path)
         for k in (
             [22, 30, 37] if kind == "claw" else [10, 29, 46, 64, 82, 102, 121, 136]
         ):
@@ -139,6 +191,10 @@ def audit(key, raw):
                 round(np.min(vals / np.linalg.norm(base, axis=1)), 3),
                 len(vals),
             ]
+    if center["cut"] in ("baguette", "princess") and len(claws) == 4:
+        index = d["stones"].index(center)
+        shift = np.frombuffer(b, "<f4", count=3, offset=12 + index * 12)
+        result["corner-spread"] = corner_cap_spread(v, f, fields, center, shift, claws)
     return key, result
 
 
@@ -169,4 +225,11 @@ if __name__ == "__main__":
             )
             print(f"{label}: {value:.3f} ({key})")
             failed |= value < limit
+    rectangular = [
+        (r["corner-spread"], k) for k, r in rows.items() if "corner-spread" in r
+    ]
+    if rectangular:
+        spread, key = max(rectangular)
+        print(f"Mirrored claw cap spread: {spread:.3f} mm ({key})")
+        failed |= spread > 0.12
     raise SystemExit(int(failed))

@@ -134,8 +134,7 @@ def basket(part, stone, setting, record=None):
         return verts.tolist(), faces.tolist()
 
     groups = shells(part)
-    rails = []
-    thickness = []
+    anchors = []
     for group in groups:
         if len(group) == 48 * 8:
             continue
@@ -145,10 +144,40 @@ def basket(part, stone, setting, record=None):
         foot = centers[1].copy()
         tip = centers[-2].copy()
         neck = centers[np.argmin(abs(centers[:, 1]))].copy()
+        anchors.append((foot, neck, tip, float(np.median(radii[2:-2]))))
+
+    # A sampled corner search can choose opposite ends of the same broad turn.
+    # On square and rectangular brilliant/step heads, construct four bearings
+    # on the true box diagonals in stone coordinates, including east-west mounts.
+    rectangular = stone["cut"] in ("baguette", "princess") and len(anchors) == 4
+    if rectangular:
+        half = np.ptp(gem_vertices, axis=0) / 2
+        signs = np.array([[1, 0, 1], [-1, 0, 1], [-1, 0, -1], [1, 0, -1]])
+        directions = signs * half
+        directions /= np.linalg.norm(directions, axis=1)[:, None]
+        feet, necks, tips, widths = (np.asarray(a) for a in zip(*anchors))
+        # Use the native bearing offset and crown height, shared by all corners.
+        clearance = np.median(np.max(necks @ normals.T - plane, axis=1))
+
+        def bearings(points):
+            heights = np.full(4, np.median(points[:, 1]))
+            radial = exterior(directions, heights, clearance)
+            result = directions * radial[:, None]
+            result[:, 1] = heights
+            return result
+
+        foot = signs * np.median(np.abs(feet), axis=0)
+        foot[:, 1] = np.median(feet[:, 1])
+        anchors = zip(
+            foot, bearings(necks), bearings(tips), np.full(4, np.median(widths))
+        )
+
+    rails = []
+    thickness = []
+    for foot, neck, tip, width in anchors:
         direction = neck.copy()
         direction[1] = 0
         direction /= np.linalg.norm(direction)
-        width = float(np.median(radii[2:-2]))
         # Start inside the solid shoulder. A split shank has two off-axis
         # shoulders, while a knife edge has a much narrower central ridge.
         world = foot @ basis + origin
@@ -175,6 +204,13 @@ def basket(part, stone, setting, record=None):
             neck,
             48,
         )
+        if rectangular:
+            # Tuck the middle of each shaft under the stone. A full-width
+            # chord between two flared posts shows as a rail beyond a long
+            # straight girdle. Keep the foot and bearing tangents unchanged.
+            progress = np.linspace(0.0, 1.0, len(body))
+            tuck = 1.0 - 0.32 * np.sin(np.pi * progress) ** 2
+            body[:, [0, 2]] *= tuck[:, None]
         crown_height = max(0.08, tip[1] - neck[1])
         crown = cubic(
             neck,
@@ -227,6 +263,9 @@ def basket(part, stone, setting, record=None):
     half_width = min(np.ptp(gem_vertices[:, 0]), np.ptp(gem_vertices[:, 2])) / 2
     foot_depth = min(-r[0, 1] for r in rails)
     height = -min(0.72 * foot_depth, max(-0.60 * ymin, 0.34 * half_width))
+    if rectangular:
+        # Keep the long gallery rails behind the girdle in the face-up view.
+        height = -min(0.80 * foot_depth, max(-0.82 * ymin, 0.34 * half_width))
     knots = np.array(
         [[np.interp(height, r[:, 1], r[:, k]) for k in [0, 2]] for r in rails]
     )
