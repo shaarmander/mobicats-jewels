@@ -1,4 +1,4 @@
-# Mobicat’s Jewels
+# Mobicat's Jewels
 
 A free, browser-based ring designer and jewelry viewer. Pick a setting, compare cuts at the same carat weight, and rotate the ring under five studio lighting rigs.
 
@@ -12,9 +12,9 @@ A free, browser-based ring designer and jewelry viewer. Pick a setting, compare 
 
 - The studio opens on a 1.50 ct emerald-cut natural diamond with two diamond side stones in 18k yellow gold. Choose **Share this ring** to copy a link to your design and camera angle or save a clean PNG at the current canvas resolution. Individual accent colors, the ring position, focus and light settings travel with the link.
 - Open **Ring design** to choose among 18 settings, 18 center cuts, 86 gemstone entries and seven metals. On a phone, tap the sliders icon in the bottom toolbar.
-- Choose **Fine**, **Classic** or **Bold** under Ring design. Classic is the default. On touchscreens, tapping the center stone opens its cut gallery. **Change gemstone** opens the color library. Each side or pavé stone can have its own gem. Tap the band to choose a metal or change the setting.
+- Choose **Fine**, **Classic** or **Bold** under Ring design. Classic is the default. On touchscreens, tapping the center stone opens its cut gallery. **Change gemstone** opens the color library. Each side or pavÃ© stone can have its own gem. Tap the band to choose a metal or change the setting.
 - Tap **Try on** to use your camera. Show the back of your hand with your fingers spread, then adjust **Visual fit**. The camera, tracking model, and ring render run locally. Closing try-on or leaving the tab stops the camera. Visual fit is an estimate.
-- Use **Center weight** to explore 0.50–3.00 ct in 0.05 ct steps. Carats measure mass. Dimensions depend on both the stone’s cut and its density.
+- Use **Center weight** to explore 0.50â€“3.00 ct in 0.05 ct steps. Carats measure mass. Dimensions depend on both the stoneâ€™s cut and its density.
 - Drag to orbit, scroll or pinch to zoom, and choose **Move ring** to drag it across the floor. The camera panel includes sparkle, depth of field and surface focus. The bottom corner shows the current frame rate during motion.
 
 ## Run locally
@@ -37,7 +37,7 @@ The production build is a static site in `dist/` and can be served from any web 
 
 ## Rendering
 
-The Three.js / WebGL 2 renderer follows refracted and reflected rays through each stone’s facet planes. Light absorption depends on distance inside the stone. Shared HDR studio lighting and local reflection probes shade the polished casting. Directional floor caustics are baked for each reference setting and cut, then adjusted for light direction, material and center-stone size at runtime.
+The Three.js / WebGL 2 renderer follows refracted and reflected rays through each stoneâ€™s facet planes. Light absorption depends on distance inside the stone. Shared HDR studio lighting and local reflection probes shade the polished casting. Directional floor caustics are baked for each reference setting and cut, then adjusted for light direction, material and center-stone size at runtime.
 
 The materials estimate at the top uses the volume of the fitted metal and the individual weight and material of every stone. Open the estimate for the breakdown and [pricing references](docs/pricing.md).
 
@@ -51,14 +51,14 @@ The [matched renderer comparison](docs/renderer-check.md) includes the round sol
 
 | Device | Test | Result |
 | --- | --- | --- |
-| Desktop Chrome, RTX 5080 | 1440 � 900, rotating pav� trilogy, 60% depth of field | 172�191 FPS across three eight-second runs on the live diamond design |
+| Desktop Chrome, RTX 5080 | 1440 × 900, rotating pavé trilogy, 60% depth of field | 172–191 FPS across three eight-second runs on the live diamond design |
 | Physical iPhone, model and browser unconfirmed | 44-second camera try-on recording | Ring tracking observed. A palm-turn orientation error was reproduced and corrected in local replay. On-device retest and sustained orbit FPS are pending. |
 | Physical midrange Android, Chrome | Five-minute orbit and camera try-on | Awaiting device measurement |
 
-To repeat the phone check, [open the pav� trilogy](https://jewels.mobicat.club/#v=1&setting=cluster&cut=round&center=natural-diamond&accent=natural-diamond&aperture=0.6). Start the turntable with the play button, let it run for five minutes and record the FPS readout in the final 30 seconds. Try three setting changes, start camera try-on and return to the studio. Record the model, browser, time to the first usable ring, sustained FPS range and any problems with tapping or camera recovery. The phone target is 30 FPS or higher during orbit.
+To repeat the phone check, [open the pavé trilogy](https://jewels.mobicat.club/#v=1&setting=cluster&cut=round&center=natural-diamond&accent=natural-diamond&aperture=0.6). Start the turntable with the play button, let it run for five minutes and record the FPS readout in the final 30 seconds. Try three setting changes, start camera try-on and return to the studio. Record the model, browser, time to the first usable ring, sustained FPS range and any problems with tapping or camera recovery. The phone target is 30 FPS or higher during orbit.
 
 ## License
 
-The viewer code and original generated jewelry assets use the [MIT License](LICENSE). Mobicat’s name and logo identify the project. Three.js retains its [own MIT copyright notice](public/third-party/three-LICENSE.txt).
+The viewer code and original generated jewelry assets use the [MIT License](LICENSE). Mobicatâ€™s name and logo identify the project. Three.js retains its [own MIT copyright notice](public/third-party/three-LICENSE.txt).
 
-The tracking runtime is Google’s MediaPipe Tasks Vision ([Apache 2.0 notice](public/third-party/mediapipe-LICENSE.txt)). The bundled hand model is the Google float16 v1 [Hand Landmarker model](https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task).
+The tracking runtime is Googleâ€™s MediaPipe Tasks Vision ([Apache 2.0 notice](public/third-party/mediapipe-LICENSE.txt)). The bundled hand model is the Google float16 v1 [Hand Landmarker model](https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task).
