@@ -10,7 +10,7 @@ A free, browser-based ring designer and jewelry viewer. Pick a setting, compare 
 
 ## Try it
 
-- The studio opens on a 1.50 ct emerald-cut natural diamond with two diamond side stones in 18k yellow gold. Choose **Share this ring** to copy a link to your design and camera angle or save a clean PNG at the current canvas resolution. Individual accent colors, the ring position, focus and light settings travel with the link.
+- **Share this ring** copies the design and camera view. The deployed viewer saves a small JPEG of that view for 90 days so Messages and other link previews can show the ring. The design is in the URL and still opens after the preview expires. If the preview service is unavailable, the viewer copies a design-only link.
 - Open **Ring design** to choose among 18 settings, 18 center cuts, 86 gemstone entries and seven metals. On a phone, tap the sliders icon in the bottom toolbar.
 - Choose **Fine**, **Classic** or **Bold** under Ring design. Classic is the default. On touchscreens, tapping the center stone opens its cut gallery. **Change gemstone** opens the color library. Each side or pavé stone can have its own gem. Tap the band to choose a metal or change the setting.
 - Tap **Try on** to use your camera. Show the back of your hand with your fingers spread, then adjust **Visual fit**. The camera, tracking model, and ring render run locally. Closing try-on or leaving the tab stops the camera. Visual fit is an estimate.
@@ -26,7 +26,7 @@ npm ci
 npm run dev
 ```
 
-Open [the local viewer](http://127.0.0.1:4181/). All meshes, lighting and texture assets needed to run it are included.
+Open [the local viewer](http://127.0.0.1:4181/). To exercise the share-preview Worker locally, build the site and run Wrangler dev with local KV. All meshes, lighting and texture assets needed to run it are included.
 
 ```sh
 npm run build

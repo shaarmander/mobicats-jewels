@@ -114,6 +114,7 @@ export class Lens {
     });
     this.sum = new T.WebGLRenderTarget(1, 1, { type, depthBuffer: false });
     this.size = new T.Vector2();
+    this.minimumSize = new T.Vector2(1, 1);
     this.axisX = new T.Vector3();
     this.axisY = new T.Vector3();
     this.scene = new T.Scene();
@@ -347,17 +348,27 @@ export class Lens {
     const smoothFacets = !interactive && this.float;
     if (interactive) this.resetHistory();
     r.getDrawingBufferSize(this.size);
+    const mobileMotion = interactive && this.compactGPU;
+    if (mobileMotion) {
+      const scale = Math.min(
+        1,
+        1.65 / r.getPixelRatio(),
+        Math.sqrt(1000000 / (this.size.x * this.size.y)),
+      );
+      this.size.multiplyScalar(scale).floor().max(this.minimumSize);
+    }
     if (aperture && (interactive || !this.float || !this.previewReady)) {
       this.drawPreview(scene, focus, aperture);
       this.previewReady = !interactive;
       return !interactive && this.float;
     }
     if (!aperture && !smoothFacets) {
-      if (this.view.width !== this.size.x || this.view.height !== this.size.y)
-        this.view.setSize(this.size.x, this.size.y);
-      r.setRenderTarget(this.view);
+      // Keep the full-size idle target allocated between gestures.
+      const target = mobileMotion ? this.previewView : this.view;
+      target.setSize(this.size.x, this.size.y);
+      r.setRenderTarget(target);
       r.render(scene, c);
-      this.present(this.view.texture, 1, true);
+      this.present(target.texture, 1, true);
       return false;
     }
     if (

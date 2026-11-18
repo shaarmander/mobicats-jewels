@@ -30,7 +30,7 @@ export function designLink(studio) {
   }
   for (const [name, gem] of studio.accentOverrides)
     p.append("stone", name + ":" + gem);
-  const url = new URL(location.href);
+  const url = new URL("/", location.origin);
   url.search = "";
   url.hash = p.toString();
   return url.href;
@@ -129,4 +129,25 @@ export function restoreView(studio, s) {
     }
   }
   studio.invalidate(true);
+}
+
+let lastPreview;
+export async function previewLink(studio, legacy) {
+  if (lastPreview?.design === legacy) return lastPreview.url;
+  const { blob: image, state: captured } = await studio.captureImage(true, () =>
+    designLink(studio),
+  );
+  const response = await fetch("/api/share", {
+    method: "POST",
+    headers: { "Content-Type": "image/jpeg" },
+    body: image,
+    signal: AbortSignal.timeout(12000),
+  });
+  if (!response.ok) throw Error("Preview unavailable");
+  const { id } = await response.json();
+  if (!/^[a-f0-9]{64}$/.test(id)) throw Error("Invalid preview");
+  const url = new URL("/s/" + id, location.origin);
+  url.search = new URL(captured).hash.slice(1);
+  lastPreview = { design: captured, url: url.href };
+  return url.href;
 }

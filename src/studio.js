@@ -80,6 +80,7 @@ export class JewelryStudio {
       matchMedia("(pointer:coarse)").matches ||
       (navigator.deviceMemory && navigator.deviceMemory <= 4);
     this.compactGPU = compactGPU;
+    this.lens.compactGPU = compactGPU;
     const probeSize = Math.min(
       compactGPU ? 512 : 1024,
       this.renderer.capabilities.maxCubemapSize,
@@ -732,7 +733,7 @@ export class JewelryStudio {
     this.lens.resetHistory();
     this.scheduleFrame();
   }
-  captureImage() {
+  captureImage(preview = false, readState) {
     // Finish the idle samples over ordinary animation frames. Capture while
     // the completed WebGL buffer is still valid, before browser compositing.
     return new Promise((resolve, reject) => {
@@ -740,7 +741,13 @@ export class JewelryStudio {
         reject(new Error("Capture unavailable"));
         return;
       }
-      this.snapshot = { resolve, reject, model: this.model };
+      this.snapshot = {
+        resolve,
+        reject,
+        preview,
+        readState,
+        model: this.model,
+      };
       this.scheduleFrame();
     });
   }
@@ -793,12 +800,27 @@ export class JewelryStudio {
       !this.snapshot && (changed || this.state.spin || this.moving),
     );
     if (this.snapshot && !refining && !this.probeDirty) {
-      const { resolve, reject } = this.snapshot;
+      const { resolve, reject, preview, readState } = this.snapshot;
+      const state = readState?.();
       this.snapshot = null;
-      this.canvas.toBlob(
+      let canvas = this.canvas;
+      if (preview) {
+        const scale = Math.min(1, 960 / Math.max(canvas.width, canvas.height));
+        const thumb = document.createElement("canvas");
+        thumb.width = Math.max(1, Math.round(canvas.width * scale));
+        thumb.height = Math.max(1, Math.round(canvas.height * scale));
+        const ctx = thumb.getContext("2d");
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(canvas, 0, 0, thumb.width, thumb.height);
+        canvas = thumb;
+      }
+      canvas.toBlob(
         (blob) =>
-          blob ? resolve(blob) : reject(new Error("PNG encoding failed")),
-        "image/png",
+          blob
+            ? resolve(readState ? { blob, state } : blob)
+            : reject(new Error("Image encoding failed")),
+        preview ? "image/jpeg" : "image/png",
+        preview ? 0.79 : undefined,
       );
     }
     const samplingBrand = this.brand.update(now, this.state.rig);

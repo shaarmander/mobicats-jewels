@@ -11,7 +11,28 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "run_worker_first": true
+    "run_worker_first": [
+      "/",
+      "/index.html",
+      "/api/share",
+      "/s/*"
+    ]
   },
-  "main": "worker.js"
+  "main": "worker.js",
+  "kv_namespaces": [
+    {
+      "binding": "PREVIEWS",
+      "id": "8fbcb75d33804aefbcd50fdc889f6104"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "SHARE_LIMIT",
+      "namespace_id": "19031",
+      "simple": {
+        "limit": 8,
+        "period": 60
+      }
+    }
+  ]
 }

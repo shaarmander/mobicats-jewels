@@ -1,5 +1,5 @@
 import "./style.css";
-import { designLink, readDesign, restoreView } from "./share.js";
+import { designLink, previewLink, readDesign, restoreView } from "./share.js";
 import lib from "../public/assets/library.json";
 import rigs from "../public/assets/lights/lights.json";
 import poses from "../public/assets/ring-poses.json";
@@ -310,16 +310,40 @@ function bind() {
     togglePanel("share-panel");
   };
   $("copy-design").onclick = async () => {
-    const url = designLink(studio);
+    const button = $("copy-design"),
+      feedback = $("share-feedback");
+    const legacy = designLink(studio);
+    button.disabled = true;
+    feedback.textContent = "Preparing ring preview…";
+    const ready = previewLink(studio, legacy).catch(() => legacy);
     try {
-      await navigator.clipboard.writeText(url);
-      $("share-feedback").textContent = "Design link copied.";
+      // Safari requires the clipboard call itself to run in the tap handler.
+      if (window.ClipboardItem && navigator.clipboard?.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": ready.then(
+              (url) => new Blob([url], { type: "text/plain" }),
+            ),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(await ready);
+      }
+      feedback.textContent =
+        (await ready) === legacy
+          ? "Design link copied. Image preview unavailable."
+          : "Design link with ring preview copied.";
     } catch {
       const input = $("share-url");
-      input.value = url;
+      input.value = await ready;
       input.hidden = false;
       input.select();
-      $("share-feedback").textContent = "Copy the selected link.";
+      feedback.textContent =
+        input.value === legacy
+          ? "Copy the selected link. Image preview unavailable."
+          : "Copy the selected preview link.";
+    } finally {
+      button.disabled = false;
     }
   };
   $("save-image").onclick = async () => {
@@ -575,7 +599,12 @@ try {
     (f) => ($("perf").textContent = Math.round(f) + " FPS"),
     (s) => ($("focus-label").textContent = s),
   );
-  const shared = readDesign(location.hash, lib, rigs);
+  const shared = readDesign(
+    location.hash ||
+      (location.pathname.startsWith("/s/") ? location.search : ""),
+    lib,
+    rigs,
+  );
   if (shared) {
     for (const key of [
       "setting",
