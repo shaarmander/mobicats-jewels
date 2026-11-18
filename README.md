@@ -51,7 +51,7 @@ The [matched renderer comparison](docs/renderer-check.md) includes the round sol
 
 | Device | Test | Result |
 | --- | --- | --- |
-| Desktop Chrome, RTX 5080 | 1440 × 900, rotating pavé trilogy, 60% depth of field | 240 FPS on the November 17 desktop run |
+| Desktop Chrome, RTX 5080 | 1440 × 900, rotating pavé trilogy, 60% depth of field | 172–191 FPS across three eight-second runs on the live diamond design |
 | Physical iPhone, Safari | Five-minute orbit and camera try-on | Awaiting device recording |
 | Physical midrange Android, Chrome | Five-minute orbit and camera try-on | Awaiting device measurement |
 
