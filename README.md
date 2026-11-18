@@ -52,7 +52,7 @@ The [matched renderer comparison](docs/renderer-check.md) includes the round sol
 | Device | Test | Result |
 | --- | --- | --- |
 | Desktop Chrome, RTX 5080 | 1440 × 900, rotating pavé trilogy, 60% depth of field | 172–191 FPS across three eight-second runs on the live diamond design |
-| Physical iPhone, Safari | Five-minute orbit and camera try-on | Awaiting device recording |
+| Physical iPhone, model and browser unconfirmed | 44-second camera try-on recording | Ring tracking observed. A palm-turn orientation error was reproduced and corrected in local replay. On-device retest and sustained orbit FPS are pending. |
 | Physical midrange Android, Chrome | Five-minute orbit and camera try-on | Awaiting device measurement |
 
 To repeat the phone check, [open the pavé trilogy](https://jewels.mobicat.club/#v=1&setting=cluster&cut=round&center=natural-diamond&accent=natural-diamond&aperture=0.6). Start the turntable with the play button, let it run for five minutes and record the FPS readout in the final 30 seconds. Try three setting changes, start camera try-on and return to the studio. Record the model, browser, time to the first usable ring, sustained FPS range and any problems with tapping or camera recovery. The phone target is 30 FPS or higher during orbit.

@@ -71,6 +71,8 @@ export class RingFingerPose {
   reset() {
     this.time = -Infinity;
     this.pending = null;
+    this.backSign = null;
+    this.handCandidate = null;
     this.snap = true;
     this.velocity.set(0, 0, 0);
   }
@@ -141,7 +143,20 @@ export class RingFingerPose {
     const upPalm = point(9).add(point(13)).multiplyScalar(0.5).sub(point(0));
     const normal = acrossPalm.cross(upPalm).normalize();
     if (normal.lengthSq() < 0.5) return;
-    if (fresh) this.backSign = normal.z < 0 ? -1 : 1;
+    // The unmirrored camera's index-to-pinky cross product points toward
+    // the back of a right hand. Reacquisition can happen palm-first.
+    const hand = result.handedness?.[0]?.[0] ?? result.handednesses?.[0]?.[0];
+    const sign =
+      hand?.score >= 0.8 ? ({ Right: 1, Left: -1 }[hand.categoryName] ?? 0) : 0;
+    this.backSign ??= sign || (normal.z < 0 ? -1 : 1);
+    if (!sign || sign === this.backSign) {
+      this.handCandidate = null;
+    } else if (this.handCandidate?.sign !== sign || capture - this.time > 260) {
+      this.handCandidate = { sign, since: capture };
+    } else if (capture - this.handCandidate.since >= 200) {
+      this.backSign = sign;
+      this.handCandidate = null;
+    }
     normal.multiplyScalar(this.backSign);
     // The image supplies finger direction. Depth and roll are less certain in a
     // single view, so keep a nearly face-on stone close to the visible midline.
