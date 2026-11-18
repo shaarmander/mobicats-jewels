@@ -1,10 +1,11 @@
 """Export Gemmo's fitted ring CAD as self-contained, indexed glTF binaries.
 
 Usage: python tools/build_jewelry_assets.py PATH_TO_GEMMO_STUDIO
-Requires Rust, Blender 5 (BLENDER_BIN or PATH), numpy, scipy and fast-simplification.
+Requires Rust, Blender 5 (BLENDER_BIN or PATH), numpy, scipy and meshoptimizer.
 """
 
 import argparse
+import ctypes
 import json
 import math
 from pathlib import Path
@@ -14,15 +15,16 @@ import subprocess
 import tempfile
 import os
 
-from scipy.spatial import cKDTree
-import fast_simplification
+import meshoptimizer
 import numpy as np
+from scipy.spatial import cKDTree
 
 from lying_poses import build_poses
 from cut_icons import build_icons
 from setting_profiles import write as write_profile_binding
 
 DEST = Path(__file__).resolve().parents[1] / "public" / "assets"
+METAL_TRIANGLE_LIMIT = 64_000
 
 
 def compact(value):
@@ -41,20 +43,157 @@ def binary_json(value):
     ).encode()
 
 
+def lock_pave_contours(positions, normals, lock):
+    # A broad, almost planar cheek otherwise collapses into strips running
+    # from its bore to its rolled edge. Retain a regular spread of master
+    # vertices there so those two distinct highlights interpolate locally.
+    cheek = np.flatnonzero(
+        (np.abs(normals[:, 2]) > 0.75)
+        & (np.abs(positions[:, 2]) > 0.55)
+        & (positions[:, 1] < 8.0)
+    )
+    cells = np.floor(positions[cheek] / 0.28).astype(int)
+    _, first = np.unique(cells, axis=0, return_index=True)
+    lock[cheek[first]] = 1
+    # Preserve the rounded turn from the comfort-fit bore onto the cheek.
+    # Keep samples on successive radial contours so a triangle cannot
+    # interpolate a bevel normal across the flat wall beside the stones.
+    r = np.linalg.norm(positions[:, :2], axis=1)
+    bore = np.min(r)
+    rim = np.flatnonzero(
+        (r > bore + 0.12)
+        & (r < bore + 0.61)
+        & (np.abs(normals[:, 2]) > 0.15)
+        & (np.abs(positions[:, 2]) > 0.65)
+        & (positions[:, 1] < 8.0)
+    )
+    a = np.arctan2(positions[rim, 0], positions[rim, 1])
+    chart = np.column_stack(
+        [
+            np.floor(a * bore / 0.14),
+            np.floor((r[rim] - bore) / 0.045),
+            np.sign(positions[rim, 2]),
+        ]
+    )
+    _, keep = np.unique(chart, axis=0, return_index=True)
+    lock[rim[keep]] = 1
+    # The channel has a second rolled edge alongside the pavé beads. Pin
+    # closely spaced radial rows through this transition, including the
+    # flat surface on its inside, to confine a narrow highlight to the lip.
+    crown = np.flatnonzero(
+        (r > bore + 0.60)
+        & (np.abs(normals[:, 2]) > 0.18)
+        & (np.abs(positions[:, 2]) > 0.72)
+        & (positions[:, 1] < 8.0)
+    )
+    a = np.arctan2(positions[crown, 0], positions[crown, 1])
+    chart = np.column_stack(
+        [
+            np.floor(a * bore / 0.18),
+            np.floor((r[crown] - bore) / 0.075),
+            np.floor(positions[crown, 2] / 0.16),
+        ]
+    )
+    _, keep = np.unique(chart, axis=0, return_index=True)
+    lock[crown[keep]] = 1
+
+
+def retriangulate_collinear_faces(positions, triangles):
+    # The voxel master has regular contour rows. Simplification can leave three
+    # successive samples on one straight line. Split the adjacent triangle at
+    # the middle sample so both faces have area on the same polished surface.
+    points = positions[triangles]
+    cross = np.cross(points[:, 1] - points[:, 0], points[:, 2] - points[:, 0])
+    for index in np.flatnonzero(np.all(cross == 0, axis=1)):
+        face = triangles[index]
+        points = positions[face]
+        longest = np.argmax(np.sum((points - np.roll(points, -1, axis=0)) ** 2, axis=1))
+        a, b, middle = np.roll(face, -longest)
+        neighbour, corner = np.where(
+            (triangles == b) & (np.roll(triangles, -1, axis=1) == a)
+        )
+        if len(neighbour) != 1:
+            raise ValueError("Collinear face has no unique neighbour")
+        other = triangles[neighbour[0], (corner[0] + 2) % 3]
+        if np.any(
+            np.any(triangles == middle, axis=1) & np.any(triangles == other, axis=1)
+        ):
+            raise ValueError("Collinear face has no free diagonal")
+        triangles[index] = [b, middle, other]
+        triangles[neighbour[0]] = [middle, a, other]
+    return triangles
+
+
 def welded_geometry(source):
     with np.load(source) as casting:
         positions, faces, normals = (
             casting[k] for k in ("positions", "faces", "normals")
         )
-    vertices, indices = fast_simplification.simplify(
-        positions.astype(np.float64), faces, target_count=min(len(faces), 64000), agg=4
-    )
-    # Preserve normals from the high-resolution continuous casting after decimation.
-    distance, neighbours = cKDTree(positions).query(vertices, k=4)
-    weights = 1 / np.maximum(distance, 0.001) ** 2
-    blended = (normals[neighbours] * weights[:, :, None]).sum(axis=1)
-    blended /= np.maximum(np.linalg.norm(blended, axis=1, keepdims=True), 1e-12)
-    return vertices, blended, indices
+    # Keep the welded master's vertex normals paired with their original
+    # positions. Shiny surfaces reveal normal errors long before silhouettes do.
+    source_indices = np.ascontiguousarray(faces.ravel(), dtype=np.uint32)
+    reduced = np.empty_like(source_indices)
+    lock = np.zeros(len(positions), dtype=np.uint8)
+    if source.stem.startswith(("pave-", "cluster-")):
+        lock_pave_contours(positions, normals, lock)
+    tree = None
+    for repair_radius in (0.24, 0.36, 0.5, 0.7, 1.0, 1.4, 2.0, 2.8):
+        used = meshoptimizer.simplify_with_attributes(
+            reduced,
+            source_indices,
+            positions,
+            normals,
+            np.full(3, 0.22, dtype=np.float32),
+            vertex_lock=lock,
+            target_index_count=min(len(source_indices), METAL_TRIANGLE_LIMIT * 3),
+            target_error=ctypes.c_float(1.0),
+        )
+        triangles = reduced[:used].reshape(-1, 3)
+        # A collapsed pocket can leave coincident, oppositely wound triangles.
+        # Cancel the zero-thickness pair before indexing or computing fit weights.
+        ordered = np.sort(triangles, axis=1)
+        _, groups, counts = np.unique(
+            ordered, axis=0, return_inverse=True, return_counts=True
+        )
+        repeated = counts[groups] > 1
+        bad = np.empty(0, dtype=np.uint32)
+        if np.any(repeated):
+            a, b, c = triangles[repeated].T
+            winding = np.where((a < b) ^ (b < c) ^ (c < a), 1, -1)
+            balance = np.bincount(
+                groups[repeated], weights=winding, minlength=len(counts)
+            )
+            if np.any(counts[groups[repeated]] != 2) or np.any(balance):
+                bad = np.unique(triangles[repeated])
+            triangles = triangles[~repeated]
+        # A narrow opening can also collapse to one edge shared by four
+        # triangles. Retain the uncollapsed master around those edges and rerun
+        # the reduction. Other areas can still use the normal triangle budget.
+        edges = np.sort(triangles[:, [[0, 1], [1, 2], [2, 0]]].reshape(-1, 2), axis=1)
+        base = len(positions)
+        keys = edges[:, 0].astype(np.uint64) * base + edges[:, 1]
+        unique, incidence = np.unique(keys, return_counts=True)
+        pinched = unique[incidence != 2]
+        if not len(pinched) and not len(bad):
+            break
+        bad = np.unique(
+            np.r_[
+                bad,
+                (pinched // base).astype(np.uint32),
+                (pinched % base).astype(np.uint32),
+            ]
+        )
+        if tree is None:
+            tree = cKDTree(positions)
+        for neighbours in tree.query_ball_point(positions[bad], repair_radius):
+            lock[neighbours] = 1
+    else:
+        raise ValueError(f"Unable to preserve the welded topology of {source.stem}")
+    if len(triangles) > METAL_TRIANGLE_LIMIT:
+        raise ValueError(f"Metal triangle budget exceeded for {source.stem}")
+    triangles = retriangulate_collinear_faces(positions, triangles)
+    vertices, indices = np.unique(triangles, return_inverse=True)
+    return positions[vertices], normals[vertices], indices.reshape(-1, 3)
 
 
 class GLB:
@@ -237,13 +376,13 @@ def export(studio, scratch):
     return raw
 
 
-def finish(raw):
+def finish(raw, recast=False):
     build_icons(raw, DEST / "cuts")
     rings = DEST / "rings"
     rings.mkdir(parents=True, exist_ok=True)
     library = json.loads((raw / "library.json").read_bytes())
     (DEST / "library.json").write_bytes(binary_json(compact(library)))
-    if not all(
+    if recast or not all(
         (raw / "castings" / (s["id"] + "-" + c["id"] + ".npz")).exists()
         for s in library["settings"]
         for c in library["cuts"]
@@ -280,9 +419,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("studio", type=Path)
     parser.add_argument("--raw", type=Path, help="Reuse the Rust export directory")
+    parser.add_argument(
+        "--recast",
+        action="store_true",
+        help="Rebuild welded castings after editing the basket or shank",
+    )
     args = parser.parse_args()
     if args.raw:
-        finish(args.raw)
+        finish(args.raw, recast=args.recast)
     else:
         with tempfile.TemporaryDirectory(prefix="mobicat-jewelry-") as tmp:
             finish(export(args.studio.resolve(), Path(tmp)))

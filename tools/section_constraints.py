@@ -178,7 +178,9 @@ def reinforce(vertices, faces, fields, curves, profiles, stones, shifts, foot):
             )
             worst = D + shift * t[:, None]
             length = np.linalg.norm(worst, axis=1)
-            missing = floors[:, j] + 0.025 - length
+            # Allow for section directions falling between sampled chords
+            # and for quantization in the browser fit field.
+            missing = floors[:, j] + 0.048 - length
             keep = missing > 0.004
             if not np.any(keep):
                 break

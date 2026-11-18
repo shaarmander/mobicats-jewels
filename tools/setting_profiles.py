@@ -99,7 +99,43 @@ def bind(data, setting, v, faces):
             (radius + 0.8 - np.linalg.norm(v - o, axis=1)) / (0.8 + 0.2 * radius)
         )
         motion += (shift - motion) * w[:, None]
-        offsets *= 1 - w[:, None, None]
+        if stone["role"] != "pave":
+            offsets *= 1 - w[:, None, None]
+    # Protect an entire pavé channel with one continuous field per shoulder.
+    # Separate spherical seat weights dent the cheek once per bead on Bold.
+    angle = np.arctan2(v[:, 0], v[:, 1])
+    for sign in [-1, 1]:
+        row = [
+            s
+            for s in data["stones"]
+            if s["role"] == "pave" and sign * s["translation"][0] > 0
+        ]
+        if not row:
+            continue
+        row.sort(
+            key=lambda s: np.arctan2(sign * s["translation"][0], s["translation"][1])
+        )
+        centers = np.array([s["translation"] for s in row])
+        knots = np.arctan2(sign * centers[:, 0], centers[:, 1])
+        end = np.clip(sign * angle, knots[0], knots[-1])
+        radial = np.interp(end, knots, np.linalg.norm(centers[:, :2], axis=1))
+        axial = np.interp(end, knots, centers[:, 2])
+        distance = np.sqrt(
+            (v[:, 0] - sign * radial * np.sin(end)) ** 2
+            + (v[:, 1] - radial * np.cos(end)) ** 2
+            + (v[:, 2] - axial) ** 2
+        )
+        stone = row[0]
+        radius = (
+            np.max(
+                np.linalg.norm(
+                    np.concatenate([f["vertices"] for f in stone["facets"]]), axis=1
+                )
+            )
+            * stone["scale"]
+        )
+        coverage = smooth((radius + 0.8 - distance) / (0.8 + 0.2 * radius))
+        offsets *= 1 - coverage[:, None, None]
     for part in data["parts"]:
         if not part["name"].startswith("head"):
             continue

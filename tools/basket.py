@@ -222,9 +222,11 @@ def basket(part, stone, setting, record=None):
 
     if len(rails) < 3 or not any(len(g) == 48 * 8 for g in groups):
         return
-    # A scalloped gallery joins the bearing supports and opens a window beneath
-    # the stone. Its cross-section is oval; its plan follows the individual cut.
-    height = ymin * 0.31
+    # The gallery springs between the lower claw shafts. Set its height from
+    # both the pavilion and the width so a flat-bottom rose has an undergallery.
+    half_width = min(np.ptp(gem_vertices[:, 0]), np.ptp(gem_vertices[:, 2])) / 2
+    foot_depth = min(-r[0, 1] for r in rails)
+    height = -min(0.72 * foot_depth, max(-0.60 * ymin, 0.34 * half_width))
     knots = np.array(
         [[np.interp(height, r[:, 1], r[:, k]) for k in [0, 2]] for r in rails]
     )
@@ -236,8 +238,6 @@ def basket(part, stone, setting, record=None):
     def unit_at(a):
         return np.stack([np.cos(a), np.zeros_like(a), np.sin(a)], axis=1)
 
-    base = exterior(unit_at(angles), np.full_like(angles, height), 0.0)
-    offset = np.linalg.norm(knots, axis=1) - base
     count = 144
     a = np.arange(count) * math.tau / count
     phase = np.interp(
@@ -246,8 +246,21 @@ def basket(part, stone, setting, record=None):
         np.arange(-1, len(angles) + 1),
     )
     dip = np.sin(math.pi * phase) ** 2
-    h = height - dip * np.minimum(0.52, -ymin * 0.17)
-    line = exterior(unit_at(a), h, 0.0) + np.interp(a, angles, offset, period=math.tau)
+    h = height - dip * min(0.55, 0.15 * half_width)
+    # Join consecutive posts along the inside chord. Only bow outward where
+    # the actual pavilion or the wire radius requires clearance.
+    ray = unit_at(a)
+    seg = np.floor(phase).astype(int) % len(knots)
+    start = knots[seg]
+    edge = knots[(seg + 1) % len(knots)] - start
+    line = (start[:, 0] * edge[:, 1] - start[:, 1] * edge[:, 0]) / (
+        ray[:, 0] * edge[:, 1] - ray[:, 2] * edge[:, 0]
+    )
+    wire_radius = np.median(thickness) * 0.61
+    active = h + wire_radius > ymin
+    if np.any(active):
+        clearance = exterior(ray[active], h[active], wire_radius + 0.035)
+        line[active] = np.maximum(line[active], clearance)
     # Ease corners on stepped cuts while keeping the rail joined at the posts.
     line = (
         np.roll(line, 2)
@@ -260,8 +273,12 @@ def basket(part, stone, setting, record=None):
     path[:, 1] = h
     width = np.median(thickness)
     if record is not None:
-        record("gallery", path @ basis + origin, np.full(count, width * 0.56),
-               np.full(count, width * 0.61))
+        record(
+            "gallery",
+            path @ basis + origin,
+            np.full(count, width * 0.56),
+            np.full(count, width * 0.61),
+        )
     yield finish(
         *tube(path, width * 0.56, width * 0.61, np.array([0.0, 1.0, 0.0]), closed=True)
     )
