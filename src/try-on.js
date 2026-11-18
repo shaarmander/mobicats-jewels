@@ -113,6 +113,7 @@ export class TryOn {
       if (!mesh.isMesh || !mesh.material.uniforms?.localEye) return;
       mesh.onBeforeRender = (_r, _s, c) => {
         const u = mesh.material.uniforms;
+        u.mmPerUnit.value = mesh.userData.mmPerUnit;
         c.getWorldPosition(u.localEye.value);
         mesh.worldToLocal(u.localEye.value);
         u.worldAxes.value.setFromMatrix4(mesh.matrixWorld);

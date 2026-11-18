@@ -63,6 +63,9 @@ function panel(id, hit = null) {
   $("cut-gem").hidden = !(
     id === "cuts" && hit?.object.userData.role === "center"
   );
+  $("edit-pave").hidden = !(
+    id === "library" && hit?.object.userData.role === "pave"
+  );
   if (id) $("estimate").open = false;
   if (studio) {
     const mark = $("part-mark");
@@ -515,6 +518,10 @@ function bind() {
   };
   $("gem-search").oninput = gemList;
   $("styles-open").onclick = () => togglePanel("styles");
+  $("edit-pave").onclick = () => {
+    bandPanel.tab = "pave";
+    panel("band-panel");
+  };
   $("library-open").onclick = () => togglePanel("library");
   $("light-toggle").onclick = () => togglePanel("light-panel");
   $("lens-toggle").onclick = () => togglePanel("lens-panel");

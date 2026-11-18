@@ -5,6 +5,7 @@ import {
   bandDefaults,
   bandSurface,
 } from "./band-shape.js";
+import { diameterFor } from "./pave.js";
 const $ = (id) => document.getElementById(id);
 const mm = (n) => n.toFixed(1) + " mm";
 const names = {
@@ -133,10 +134,10 @@ export class BandPanel {
     $("design").classList.remove("mobile-open");
     this.defaults = bandDefaults(this.s);
     this.pending = null;
-    if (hit) this.tab = "details";
+    if (hit) this.tab = hit.object.name === "pave-grains" ? "pave" : "details";
     this.showTab(this.tab);
     this.s.resize();
-    if (hit) {
+    if (hit && this.tab === "details") {
       const p = this.s.model.worldToLocal(hit.point.clone());
       const edge =
         hit.object.name === "band-beads" ||
@@ -174,6 +175,9 @@ export class BandPanel {
         "aria-pressed",
         String(o[b.dataset.bandKey] === b.dataset.value),
       );
+    const accent = this.s.lib.gems.find((g) => g.id === this.s.state.accent);
+    $("pave-weight-label").textContent =
+      (accent?.name ?? "Accent") + " per stone";
     for (const k of Object.keys(bandRanges)) {
       const el = $("band-" + k),
         n = k === "pave" ? Math.min(o.pave, this.s.band.row().max) : o[k];
@@ -181,11 +185,57 @@ export class BandPanel {
       if (k === "front")
         el.min = o.shoulders === "split" ? 3.4 : bandRanges.front[0];
       el.value = n;
-      const text = k === "pave" ? String(n) : mm(n);
+      const text = ["pave", "rows"].includes(k)
+        ? String(n)
+        : k === "pitch"
+          ? n.toFixed(2) + " mm"
+          : k === "weight"
+            ? ((n * (accent?.density ?? 3.52)) / 3.52).toFixed(3) +
+              " ct · " +
+              diameterFor(n).toFixed(2) +
+              " mm"
+            : mm(n);
       $("band-" + k + "-out").value = text;
       el.setAttribute("aria-valuetext", text);
     }
-    $("band-reset").disabled = !(this.s.band.options || this.pending);
+    const row = this.s.band.row(),
+      stones = row.seats;
+    const wanted = o.rows * o.pave * 2;
+    const weight = this.s.stones.reduce((sum, m) => {
+      if (!m.visible || m.userData.role !== "pave") return sum;
+      const gem = this.s.lib.gems.find(
+        (g) =>
+          g.id === (this.s.accentOverrides.get(m.name) ?? this.s.state.accent),
+      );
+      return sum + (m.userData.diamondCarats * (gem?.density ?? 3.52)) / 3.52;
+    }, 0);
+    const ds = stones.map((s) => s.d),
+      range = ds.length
+        ? (Math.max(...ds) - Math.min(...ds) > 0.015
+            ? Math.min(...ds).toFixed(2) + "–"
+            : "") +
+          Math.max(...ds).toFixed(2) +
+          " mm"
+        : "";
+    $("pave-fit").textContent = !wanted
+      ? "Add positions to set stones on both shoulders."
+      : (stones.length
+          ? stones.length +
+            " stones · " +
+            range +
+            " · " +
+            row.pitchMm.toFixed(2) +
+            " mm fitted pitch. " +
+            weight.toFixed(3) +
+            " ct total."
+          : "No stones fit.") +
+        (stones.length < wanted
+          ? " Widen the shoulders, reduce stone size or use fewer rows."
+          : "");
+    $("band-reset").disabled = !(
+      (this.s.band.options && !this.s.band.preset) ||
+      this.pending
+    );
     sectionDrawing($("band-section"), o);
     this.place();
   }
@@ -236,8 +286,7 @@ export class BandPanel {
     $("band-handles").hidden = this.tab === "shape";
     for (const e of this.handles) {
       const k = e.dataset.handle;
-      e.hidden =
-        k === "pave" ? this.tab !== "details" : this.tab !== "shoulders";
+      e.hidden = k === "pave" ? this.tab !== "pave" : this.tab !== "shoulders";
       if (e.hidden) continue;
       const row = this.s.band.row(),
         a =
@@ -245,8 +294,8 @@ export class BandPanel {
             ? Math.PI
             : k === "front"
               ? 0.93
-              : row.start +
-                (Math.min(row.max, this.values.pave) - 1) * row.pitch;
+              : (row.angles[Math.min(row.max, this.values.pave) - 1] ??
+                row.start - row.pitch);
       const left = this.project(-a),
         right = this.project(a),
         p = left[2] < right[2] ? left : right;
@@ -274,10 +323,10 @@ export class BandPanel {
       if (drag?.id !== e.pointerId) return;
       let value;
       if (key === "pave") {
-        const { start, pitch, max } = this.s.band.row();
+        const { start, pitch, max, angles } = this.s.band.row();
         let nearest = Infinity;
         for (let i = 0; i <= max; i++) {
-          const p = this.project(drag.sign * (start + (i - 1) * pitch));
+          const p = this.project(drag.sign * (angles[i - 1] ?? start - pitch));
           const d = Math.hypot(p[0] - e.clientX, p[1] - e.clientY);
           if (d < nearest) {
             nearest = d;

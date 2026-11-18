@@ -254,6 +254,9 @@
           <i data-icon="close"></i>
         </button>
       </div>
+      <button id="edit-pave" class="library-btn" hidden>
+        Edit pav&#233; layout
+      </button>
       <div
         id="quick-gems"
         role="group"
@@ -291,7 +294,8 @@
       <div class="band-tabs segmented" role="group" aria-label="Band controls">
         <button data-band-tab="shape">Shape</button
         ><button data-band-tab="shoulders">Shoulders</button
-        ><button data-band-tab="details">Details</button>
+        ><button data-band-tab="details">Details</button
+        ><button data-band-tab="pave">Pavé</button>
       </div>
       <div data-band-page="shape">
         <div class="band-shapes" role="group" aria-label="Cross-section"></div>
@@ -344,8 +348,38 @@
           data-options="edge"
           aria-label="Edge treatment"
         ></div>
+      </div>
+      <div data-band-page="pave" hidden>
         <label class="band-slider"
-          >Pavé per side <output id="band-pave-out" for="band-pave"></output
+          >Rows across the band
+          <output id="band-rows-out" for="band-rows"></output
+          ><input id="band-rows" type="range" min="1" max="3" step="1"
+        /></label>
+        <label class="band-slider"
+          ><span id="pave-weight-label">Weight per stone</span>
+          <output id="band-weight-out" for="band-weight"></output
+          ><input
+            id="band-weight"
+            type="range"
+            min=".002"
+            max=".075"
+            step=".001"
+        /></label>
+        <label class="band-slider"
+          >Pitch · center to center
+          <output id="band-pitch-out" for="band-pitch"></output
+          ><input id="band-pitch" type="range" min=".9" max="3.5" step=".05"
+        /></label>
+        <div class="caption">Stone sizing on taper</div>
+        <div
+          class="band-options"
+          data-options="sizing"
+          aria-label="Stone sizing on taper"
+        ></div>
+        <p class="band-hint" id="pave-fit" role="status"></p>
+        <label class="band-slider"
+          >Positions per side
+          <output id="band-pave-out" for="band-pave"></output
           ><input id="band-pave" type="range" min="0" max="14" step="1"
         /></label>
       </div>

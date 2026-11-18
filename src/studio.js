@@ -329,7 +329,7 @@ export class JewelryStudio {
     if (stamp !== this.revision) return false;
     if (this.state.setting !== setting) this.accentOverrides.clear();
     Object.assign(this.state, { setting, cut });
-    const bandOptions = this.band.options;
+    const bandOptions = this.band.preset ? null : this.band.options;
     this.band.detach();
     if (this.model) this.assembly.remove(this.model);
     this.materials.forEach((m) => m.dispose());
@@ -388,7 +388,8 @@ export class JewelryStudio {
     this.setGems(this.state.center, this.state.accent);
     this.focusCenter();
     this.setMetal(this.state.metal);
-    if (bandOptions) await this.band.edit(bandOptions);
+    if (bandOptions || this.fit.stones.some((m) => m.userData.role === "pave"))
+      await this.band.edit(bandOptions);
     if (stamp !== this.revision) return false;
     this.invalidate(true);
     return true;
@@ -418,6 +419,17 @@ export class JewelryStudio {
       .add(this.fit.nativePose.position);
     this.fit.apply(scale, this.state.profile);
     this.band.layout();
+    for (let side = 0; side < 2; side++) {
+      const accents = this.stones.filter(
+        (m) =>
+          !m.userData.bandHidden &&
+          m.userData.role !== "center" &&
+          (m.position.x > 0 ? 1 : 0) === side,
+      );
+      const sideStone = accents.find((m) => m.userData.role === "side");
+      this.shoulderProbes[side].stone =
+        sideStone ?? accents[Math.floor(accents.length / 2)] ?? null;
+    }
     this.model.updateWorldMatrix(true, true);
     const anchor = stone
       .getWorldPosition(new T.Vector3())
@@ -462,17 +474,6 @@ export class JewelryStudio {
     );
     const accentMix = [];
     this.fitCenter(colors[0]);
-    for (let side = 0; side < 2; side++) {
-      const accents = this.stones.filter(
-        (m) =>
-          !m.userData.bandHidden &&
-          m.userData.role !== "center" &&
-          (m.position.x > 0 ? 1 : 0) === side,
-      );
-      const sideStone = accents.find((m) => m.userData.role === "side");
-      this.shoulderProbes[side].stone =
-        sideStone ?? accents[Math.floor(accents.length / 2)] ?? null;
-    }
     const shared = new Map();
     for (const mesh of this.stones) {
       const isCenter = mesh.userData.role === "center",
@@ -484,7 +485,12 @@ export class JewelryStudio {
             : colors[isCenter ? 0 : 1];
       if (!mesh.userData.bandHidden && !isCenter && this.accentOverrides.size)
         accentMix.push({ gem, area: mesh.scale.x ** 2 });
-      const side = mesh.position.x > 0 ? 1 : 0;
+      const side =
+        mesh.userData.seatId !== undefined
+          ? mesh.userData.seatId % 2
+          : mesh.position.x > 0
+            ? 1
+            : 0;
       const key = mesh.geometry.uuid + (isCenter ? "center" : side) + gem.id;
       let material = shared.get(key);
       if (!material) {
@@ -506,6 +512,7 @@ export class JewelryStudio {
       }
       mesh.material = material;
       mesh.onBeforeRender = (_r, _s, camera) => {
+        material.uniforms.mmPerUnit.value = mesh.userData.mmPerUnit;
         camera.getWorldPosition(material.uniforms.localEye.value);
         mesh.worldToLocal(material.uniforms.localEye.value);
         material.uniforms.worldAxes.value.setFromMatrix4(mesh.matrixWorld);

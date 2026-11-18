@@ -18,7 +18,8 @@ export function designLink(studio) {
     "aperture",
   ])
     p.set(key, s[key]);
-  if (studio.band.options) p.set("band", JSON.stringify(studio.band.options));
+  if (studio.band.options && !studio.band.preset)
+    p.set("band", JSON.stringify(studio.band.options));
   p.set("sparkle", studio.lens.sparkle);
   p.set("eye", vector(studio.camera.position));
   p.set("target", vector(studio.controls.target));
@@ -125,11 +126,14 @@ export function restoreView(studio, s) {
   }
   if ([7, 8].includes(s.focus?.length)) {
     const [name, ...values] = s.focus,
-      mesh = studio.model.getObjectByName(name);
+      mesh =
+        studio.stones.find((m) => m.name === name && m.visible) ??
+        studio.model.getObjectByName(name);
     const [a, b, c, x, y, z, instanceId] = values.map(Number),
       pos = mesh?.geometry?.attributes.position;
     if (
       pos &&
+      mesh.visible &&
       (!mesh.isInstancedMesh ||
         (Number.isInteger(instanceId) &&
           instanceId >= 0 &&

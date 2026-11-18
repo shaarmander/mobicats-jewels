@@ -7,6 +7,7 @@ import {
   bandChoices,
 } from "../src/band-shape.js";
 import { meshVolume } from "../src/center-fit.js";
+import { paveDefaults } from "../src/pave.js";
 import { readDesign } from "../src/share.js";
 
 const options = {
@@ -73,6 +74,6 @@ test("all four sections differ and custom band links reject malformed dimensions
     lib,
     [],
   );
-  assert.deepEqual(data.band, options);
+  assert.deepEqual(data.band, { ...paveDefaults, ...options });
   assert.equal(readDesign("#v=1", lib, []).band, undefined);
 });

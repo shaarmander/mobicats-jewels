@@ -1,8 +1,10 @@
 import * as T from "three";
+import { paveDefaults } from "./pave.js";
 
 const tau = Math.PI * 2;
 const smooth = T.MathUtils.smoothstep;
 export const bandChoices = {
+  sizing: ["graduated", "fixed"],
   shape: ["round", "flat", "domed", "knife"],
   shoulders: ["straight", "taper", "flare", "split"],
   finish: ["polished", "brushed", "hammered"],
@@ -13,10 +15,14 @@ export const bandRanges = {
   thickness: [1.4, 3.4],
   front: [1.6, 6.5],
   pave: [0, 14],
+  pitch: [0.9, 3.5],
+  weight: [0.002, 0.075],
+  rows: [1, 3],
 };
 
 export function validBand(value) {
   if (!value || typeof value !== "object") return null;
+  value = { ...paveDefaults, ...value };
   const options = {};
   for (const [key, choices] of Object.entries(bandChoices)) {
     if (!choices.includes(value[key])) return null;
@@ -28,7 +34,7 @@ export function validBand(value) {
       !Number.isFinite(n) ||
       n < min ||
       n > max ||
-      (key === "pave" && !Number.isInteger(n))
+      (["pave", "rows"].includes(key) && !Number.isInteger(n))
     )
       return null;
     options[key] = n;
@@ -53,6 +59,8 @@ export function bandDefaults(studio) {
     T.MathUtils.clamp(Math.round(n * 10) / 10, ...bandRanges[key]);
   const style = studio.state.setting;
   return {
+    ...paveDefaults,
+    ...(style === "cluster" ? { weight: 0.004, pitch: 1.16 } : {}),
     width: dim(width, "width"),
     thickness: dim(outer - inner, "thickness"),
     front: dim(

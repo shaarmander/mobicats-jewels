@@ -1460,8 +1460,21 @@ input[type="range"] {
   #band-panel {
     width: auto;
     bottom: var(--edge-bottom);
-    max-height: 43dvh;
+    max-height: 48dvh;
     z-index: 6;
+  }
+  #band-panel:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #band-panel > :not([data-band-page]) {
+    flex-shrink: 0;
+  }
+  #band-panel [data-band-page]:not([hidden]) {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   body:has(#band-panel:not([hidden])) :is(.dock, .status) {
     visibility: hidden;
@@ -1469,4 +1482,8 @@ input[type="range"] {
   #band-panel .card-head {
     position: static;
   }
+}
+
+#edit-pave[hidden] {
+  display: none;
 }

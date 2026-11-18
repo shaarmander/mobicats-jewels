@@ -7,6 +7,15 @@ import {
   sweepBand,
   finishTexture,
 } from "./band-shape.js";
+import {
+  paveLayout,
+  paveDefaults,
+  grainGeometry,
+  grainMatrices,
+  weightFor,
+  diameterFor,
+} from "./pave.js";
+import { cutSeats } from "./pave-seats.js";
 import { meshVolume } from "./center-fit.js";
 
 const point = new T.Vector3(),
@@ -150,9 +159,14 @@ export class CustomBand {
   clearGeometry() {
     this.clearNativeFinish();
     this.surface = null;
+    this.plan = null;
+    this.preview = null;
     if (!this.group) return;
     this.group.removeFromParent();
+    if (this.blank !== this.shank.geometry) this.blank.dispose();
     this.shank.geometry.dispose();
+    this.grains?.dispose();
+    this.grains = null;
     this.beads?.dispose();
     this.beads = null;
     this.group = null;
@@ -168,10 +182,26 @@ export class CustomBand {
     this.head = null;
     this.options = null;
   }
-  async edit(options) {
+  async edit(options, preset = false) {
     const s = this.studio,
       fit = s.fit,
       ticket = ++this.ticket;
+    if (!options && fit.stones.some((m) => m.userData.role === "pave")) {
+      const native = bandDefaults(s),
+        surface = bandSurface(
+          s.state.setting,
+          native,
+          (s.model.userData.bandDiameter || 16.5068) / 2,
+        );
+      native.pave = Math.min(
+        native.pave,
+        paveLayout(surface, native, this.firstAngle(diameterFor(native.weight)))
+          .max,
+      );
+      return this.edit(native, true);
+    }
+    this.preset = preset;
+    if (options) options = { ...paveDefaults, ...options };
     if (!options) {
       this.clearGeometry();
       this.options = null;
@@ -194,6 +224,7 @@ export class CustomBand {
     }
     const defaults = bandDefaults(s);
     if (
+      !defaults.pave &&
       Object.keys(defaults).every(
         (k) => k === "finish" || defaults[k] === options[k],
       )
@@ -209,6 +240,20 @@ export class CustomBand {
       if (options.finish === "polished") this.clearNativeFinish();
       else this.applyNativeFinish(fit);
       s.invalidate(true);
+      return true;
+    }
+    if (
+      this.group &&
+      ["width", "front", "thickness", "shape", "edge", "shoulders"].every(
+        (k) => options[k] === this.options[k],
+      )
+    ) {
+      this.options = options;
+      this.plan = null;
+      s.focusPick = null;
+      this.refreshFinish();
+      this.populate();
+      s.setGems(s.state.center, s.state.accent);
       return true;
     }
     // Keep the last valid ring on screen until its replacement is ready.
@@ -245,7 +290,8 @@ export class CustomBand {
     this.group.add(mount);
     this.bore = (s.model.userData.bandDiameter || 16.5068) / 2;
     const surface = bandSurface(s.state.setting, options, this.bore);
-    this.shank = new T.Mesh(sweepBand(surface), this.metal);
+    this.blank = sweepBand(surface);
+    this.shank = new T.Mesh(this.blank, this.metal);
     this.shank.name = "custom-shank";
     this.shank.userData.role = "band";
     this.shank.castShadow = true;
@@ -274,7 +320,7 @@ export class CustomBand {
       hammered: 0.16,
     }[finish];
   }
-  firstAngle() {
+  firstAngle(diameter) {
     let start = 0.26;
     for (const mesh of this.studio.fit.stones) {
       if (mesh.userData.role === "pave") continue;
@@ -287,7 +333,7 @@ export class CustomBand {
         start,
         a +
           Math.atan2(
-            radius + 0.45,
+            radius + diameter / 2 + 0.18,
             Math.hypot(mesh.position.x, mesh.position.y),
           ),
       );
@@ -295,38 +341,47 @@ export class CustomBand {
     return start;
   }
   row() {
-    const start = this.firstAngle(),
-      span = Math.max(0.05, Math.PI / 2 - start);
-    const nativeCount =
-      this.studio.fit.stones.filter((m) => m.userData.role === "pave").length /
-      2;
-    const max = Math.min(
-      14,
-      Math.max(nativeCount, 1 + Math.floor(span / 0.143)),
-    );
-    const pitch = Math.min(0.143, span / Math.max(1, max - 1));
-    return {
-      start,
-      pitch,
-      max,
-      size: pitch / 0.143,
-      count: Math.min(this.options?.pave || 0, max),
-    };
+    if (this.plan) return this.plan;
+    const s = this.studio,
+      fit = s.fit;
+    if (
+      this.preview?.fit === fit &&
+      this.preview.scale === fit.scale &&
+      this.preview.profile === fit.profile
+    )
+      return this.preview.plan;
+    const o = this.options ?? bandDefaults(s),
+      surface = bandSurface(
+        s.state.setting,
+        o,
+        (s.model.userData.bandDiameter || 16.5068) / 2,
+      );
+    const plan = paveLayout(surface, o, this.firstAngle(diameterFor(o.weight)));
+    this.preview = { fit, scale: fit.scale, profile: fit.profile, plan };
+    return plan;
   }
   populate() {
-    const s = this.studio,
-      count = this.options.pave;
-    for (let i = 0; i < count; i++)
-      for (const side of [-1, 1]) {
-        const m = new T.Mesh(geometry, this.metal);
-        m.name = "pave-" + (2 * i + (side > 0 ? 1 : 0));
-        m.userData = { ...melee.extras };
-        m.scale.setScalar(melee.scale);
-        m.userData.mmPerUnit = melee.scale;
-        this.group.add(m);
-        this.gems.push(m);
-        s.stones.push(m);
-      }
+    const active = new Map(this.gems.map((m) => [m.userData.seatId, m]));
+    this.gems = [];
+    for (let row = 0; row < this.options.rows; row++)
+      for (let i = 0; i < this.options.pave; i++)
+        for (let side = 0; side < 2; side++) {
+          const id = 100 * row + 2 * i + side;
+          let m = active.get(id);
+          if (!m) {
+            m = new T.Mesh(geometry, this.metal);
+            m.userData = { ...melee.extras, seatId: id };
+            m.name = "pave-" + id;
+            this.group.add(m);
+          }
+          active.delete(id);
+          this.gems.push(m);
+        }
+    for (const m of active.values()) m.removeFromParent();
+    this.studio.stones = [
+      ...this.studio.fit.stones.filter((m) => m.userData.role !== "pave"),
+      ...this.gems,
+    ];
   }
   stonePoint(angle, side = 1, t = 0.0) {
     return this.surface.section(angle, 0, side, t);
@@ -336,68 +391,57 @@ export class CustomBand {
     const s = this.studio,
       fit = s.fit;
     fitHead(this.head, fit);
-    const { start, pitch, count, size } = this.row();
-    // A wider center can cover a row's first seat. Rebuild its active stones on the next fit.
-    const active = Math.min(count, this.gems.length / 2);
-    const beadList = [];
-    let extraVolume = 0;
-    for (let j = 0; j < this.gems.length; j++) {
-      const i = Math.floor(j / 2),
-        sign = j % 2 ? 1 : -1,
-        m = this.gems[j];
-      m.userData.bandHidden = i >= active;
-      m.visible = !m.userData.bandHidden;
-      if (!m.visible) continue;
-      m.scale.setScalar(melee.scale * size);
+    const start = this.firstAngle(diameterFor(this.options.weight));
+    if (
+      this.plan?.start === start &&
+      this.lastScale === fit.scale &&
+      this.lastProfile === fit.profile
+    )
+      return;
+    this.lastScale = fit.scale;
+    this.lastProfile = fit.profile;
+    const plan = (this.plan = paveLayout(this.surface, this.options, start));
+    const seats = new Map(plan.seats.map((seat) => [seat.id, seat]));
+    for (const m of this.gems) {
+      const seat = seats.get(m.userData.seatId);
+      m.userData.bandHidden = !seat;
+      m.visible = !!seat;
+      if (!seat) continue;
+      m.position.copy(seat.p).addScaledVector(seat.normal, -0.055 * seat.d);
+      m.scale.setScalar(seat.d / 2);
       m.userData.mmPerUnit = m.scale.x;
-      m.userData.diamondCarats = melee.extras.diamondCarats * size ** 3;
-      const a = sign * (start + i * pitch);
-      // Put the bearing on the crown of the chosen strand. A split or
-      // twisted shoulder can have its crown well off the central plane.
-      let crown,
-        t = 0,
-        highest = -Infinity;
-      for (let j = 0; j <= 16; j++) {
-        const u = (1.3 * j) / 16,
-          sample = this.stonePoint(a, 1, u),
-          radius = Math.hypot(sample[0], sample[1]);
-        if (radius > highest) {
-          highest = radius;
-          crown = sample;
-          t = u;
-        }
-      }
-      const tangent = new T.Vector3()
-        .fromArray(this.stonePoint(a + 0.002, 1, t))
-        .sub(new T.Vector3().fromArray(this.stonePoint(a - 0.002, 1, t)))
-        .normalize();
-      const across = new T.Vector3()
-        .fromArray(this.stonePoint(a, 1, t + 0.012))
-        .sub(
-          new T.Vector3().fromArray(
-            t > 0.012
-              ? this.stonePoint(a, 1, t - 0.012)
-              : this.stonePoint(a, -1, 0.012 - t),
-          ),
-        )
-        .normalize();
-      const normal = across.clone().cross(tangent).normalize();
-      if (normal.dot(new T.Vector3(Math.sin(a), Math.cos(a), 0)) < 0)
-        normal.negate();
-      across.crossVectors(tangent, normal).normalize();
-      m.position.fromArray(crown).addScaledVector(normal, 0.075 * size);
+      m.userData.diamondCarats = weightFor(seat.d);
       m.quaternion.setFromRotationMatrix(
-        matrix.makeBasis(tangent, normal, across),
+        matrix.makeBasis(seat.along, seat.normal, seat.across),
       );
-      for (const dz of [-0.47, 0.47])
-        for (const offset of [-0.46, 0.46]) {
-          const p = m.position
-            .clone()
-            .addScaledVector(tangent, offset * size)
-            .addScaledVector(across, dz * size)
-            .addScaledVector(normal, 0.045 * size);
-          beadList.push([p.x, p.y, p.z, 0.195 * size]);
-        }
+    }
+    if (
+      s.focusPick?.object === this.shank ||
+      s.focusPick?.object.userData.bandHidden
+    )
+      s.focusPick = null;
+    if (this.shank.geometry !== this.blank) this.shank.geometry.dispose();
+    this.shank.geometry = cutSeats(this.blank, plan.seats);
+    if (this.grains) {
+      if (s.focusPick?.object === this.grains) s.focusPick = null;
+      this.grains.removeFromParent();
+      this.grains.dispose();
+      this.grains = null;
+    }
+    const dies = grainMatrices(plan.seats),
+      beadList = [];
+    let extraVolume = 0;
+    if (dies.length) {
+      this.grains = new T.InstancedMesh(grainGeometry, s.bandMat, dies.length);
+      this.grains.name = "pave-grains";
+      this.grains.userData.role = "band";
+      this.grains.castShadow = true;
+      dies.forEach((m, i) => {
+        this.grains.setMatrixAt(i, m);
+        extraVolume += Math.abs(m.determinant()) * 1.4;
+      });
+      this.grains.computeBoundingSphere();
+      this.group.add(this.grains);
     }
     if (this.options.edge === "beaded") {
       for (let i = 0; i < 154; i++)
@@ -461,6 +505,18 @@ export class CustomBand {
           .applyMatrix4(m.matrix)
           .toArray(out, i * 3);
       points.push(out);
+    }
+    if (dies.length) {
+      const shell = [];
+      for (const die of dies) {
+        for (let i = 0; i < 8; i++)
+          point
+            .set(Math.cos((i * Math.PI) / 4), 0.74, Math.sin((i * Math.PI) / 4))
+            .applyMatrix4(die)
+            .toArray(shell, shell.length);
+        point.set(0, 1, 0).applyMatrix4(die).toArray(shell, shell.length);
+      }
+      points.push(shell);
     }
     if (beadList.length) {
       const shell = [];
