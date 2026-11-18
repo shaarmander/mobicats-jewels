@@ -1,3 +1,4 @@
+import { BandPanel } from "./band-panel.js";
 import "./style.css";
 import { designLink, previewLink, readDesign, restoreView } from "./share.js";
 import lib from "../public/assets/library.json";
@@ -53,6 +54,7 @@ const panels = [
   "cuts",
   "library",
   "setting-picker",
+  "band-panel",
   "light-panel",
   "lens-panel",
   "share-panel",
@@ -64,14 +66,15 @@ function panel(id, hit = null) {
   if (id) $("estimate").open = false;
   if (studio) {
     const mark = $("part-mark");
-    studio.selectedPart = hit
-      ? {
-          object: hit.object,
-          anchor: hit.object.worldToLocal(hit.point.clone()),
-          mark,
-        }
-      : null;
-    mark.hidden = !hit;
+    studio.selectedPart =
+      hit && id !== "band-panel"
+        ? {
+            object: hit.object,
+            anchor: hit.object.worldToLocal(hit.point.clone()),
+            mark,
+          }
+        : null;
+    mark.hidden = !studio.selectedPart;
     document.body.classList.toggle("part-edit", !!hit);
     if (hit) studio.scheduleFrame();
   }
@@ -80,10 +83,14 @@ function panel(id, hit = null) {
         hit.object.userData.role
       ] ?? "Gem library")
     : "Gem library";
+  const wasBand = !$("band-panel").hidden;
   for (const p of panels) $(p).hidden = p !== id;
+  if (id === "band-panel") bandPanel?.open(hit);
+  else if (wasBand) bandPanel?.close();
   for (const [a, b] of [
     ["library-open", "library"],
     ["styles-open", "styles"],
+    ["band-open", "band-panel"],
     ["cuts-open", "cuts"],
     ["light-toggle", "light-panel"],
     ["lens-toggle", "lens-panel"],
@@ -102,6 +109,7 @@ function togglePanel(id) {
 function pressed(els, fn) {
   for (const el of els) el.setAttribute("aria-pressed", String(fn(el)));
 }
+let bandPanel;
 let studio,
   request = 0;
 let target = "center";
@@ -304,6 +312,7 @@ async function startTryOn() {
   }
 }
 function bind() {
+  bandPanel = new BandPanel(studio, panel, paint);
   $("share-toggle").onclick = () => {
     $("share-feedback").textContent = "";
     $("share-url").hidden = true;
@@ -398,7 +407,20 @@ function bind() {
     const cutPicker =
       role === "center" &&
       (pointer === "touch" || matchMedia("(max-width:700px)").matches);
-    panel(metal ? "setting-picker" : cutPicker ? "cuts" : "library", hit);
+    const onBand =
+      role === "band" &&
+      (studio.band.group ||
+        studio.model.worldToLocal(hit.point.clone()).y < 9.9);
+    panel(
+      onBand
+        ? "band-panel"
+        : metal
+          ? "setting-picker"
+          : cutPicker
+            ? "cuts"
+            : "library",
+      hit,
+    );
   };
   for (const [id, label] of [
     ["natural-diamond", "Diamond"],
@@ -520,7 +542,7 @@ function bind() {
   for (const el of document.querySelectorAll("button[data-tool]"))
     el.onclick = () => tool(el.dataset.tool);
   $("stage").addEventListener("pointerdown", () => {
-    panel(null);
+    if ($("band-panel").hidden) panel(null);
     $("estimate").open = false;
     $("design").classList.remove("mobile-open");
   });
@@ -640,6 +662,7 @@ try {
   ]);
   paint();
   if (shared) {
+    if (shared.band) await studio.band.edit(shared.band);
     restoreView(studio, shared);
     for (const [id, value] of [
       ["azimuth", studio.state.rotation],

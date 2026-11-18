@@ -113,7 +113,8 @@ export function estimate(studio) {
   if (!studio?.fit) return null;
   const { state, lib } = studio,
     metal = lib.metals.find((m) => m.id === state.metal);
-  const grams = (studio.fit.volume * metal.density) / 1000;
+  const grams =
+    ((studio.band?.volume ?? studio.fit.volume) * metal.density) / 1000;
   const [spot, fine] = alloys[metal.id];
   const metalCost = grams * spot * fine;
   const center = stonePrice(state.center, state.carats, state.cut);
@@ -122,7 +123,7 @@ export function estimate(studio) {
     count = 0;
   const missing = new Set();
   for (const mesh of studio.stones) {
-    if (mesh.userData.role === "center") continue;
+    if (mesh.userData.role === "center" || mesh.userData.bandHidden) continue;
     const id = studio.accentOverrides.get(mesh.name) ?? state.accent;
     const gem = lib.gems.find((g) => g.id === id);
     const ct = (mesh.userData.diamondCarats * gem.density) / 3.52;

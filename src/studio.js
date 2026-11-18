@@ -8,6 +8,8 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import { cutMaterial, setStoneOptics, Lens } from "./optics.js";
 
+import { CustomBand } from "./custom-band.js";
+
 export class JewelryStudio {
   constructor(canvas, lib, rigs, poses, onFrame, onFocus) {
     this.lib = lib;
@@ -31,6 +33,7 @@ export class JewelryStudio {
       tool: "orbit",
     };
     this.canvas = canvas;
+    this.band = new CustomBand(this);
     this.renderer = new T.WebGLRenderer({
       canvas,
       antialias: true,
@@ -230,7 +233,15 @@ export class JewelryStudio {
         ),
     );
     const side = w >= 900 ? -Math.min(w * 0.065, 108) : 0;
-    this.camera.setViewOffset(w, h, side, w < 700 ? h * 0.045 : 0, w, h);
+    const bandOpen = !document.getElementById("band-panel").hidden;
+    this.camera.setViewOffset(
+      w,
+      h,
+      side,
+      w < 700 ? h * (bandOpen ? 0.19 : 0.045) : 0,
+      w,
+      h,
+    );
     this.camera.updateProjectionMatrix();
     this.invalidate();
   }
@@ -298,6 +309,8 @@ export class JewelryStudio {
     if (stamp !== this.revision) return false;
     if (this.state.setting !== setting) this.accentOverrides.clear();
     Object.assign(this.state, { setting, cut });
+    const bandOptions = this.band.options;
+    this.band.detach();
     if (this.model) this.assembly.remove(this.model);
     this.materials.forEach((m) => m.dispose());
     this.materials = [];
@@ -316,6 +329,10 @@ export class JewelryStudio {
         (old) => {
           old.floor.dispose();
           old.keyAtlas.dispose();
+          old.fit?.headPromise?.then(
+            (h) => h.geo.dispose(),
+            () => {},
+          );
           const meshes = new Set();
           old.scene.traverse((node) => {
             if (node.isMesh) meshes.add(node.geometry);
@@ -343,15 +360,6 @@ export class JewelryStudio {
     this.fit = asset.fit;
     // A cached model may have been returned to its native pose above.
     this.fit.scale = undefined;
-    for (let side = 0; side < 2; side++) {
-      const accents = this.stones.filter(
-        (m) =>
-          m.userData.role !== "center" && (m.position.x > 0 ? 1 : 0) === side,
-      );
-      const sideStone = accents.find((m) => m.userData.role === "side");
-      this.shoulderProbes[side].stone =
-        sideStone ?? accents[Math.floor(accents.length / 2)] ?? null;
-    }
     // Each fitted pose touches the bake plane at Y = 0 mm.
     this.ground.position.y = -0.015;
     this.floorUniforms.mask.value = asset.floor;
@@ -360,6 +368,8 @@ export class JewelryStudio {
     this.setGems(this.state.center, this.state.accent);
     this.focusCenter();
     this.setMetal(this.state.metal);
+    if (bandOptions) await this.band.edit(bandOptions);
+    if (stamp !== this.revision) return false;
     this.invalidate(true);
     return true;
   }
@@ -382,11 +392,12 @@ export class JewelryStudio {
       (this.state.carats * diamond.density) /
         (stone.userData.diamondCarats * gem.density),
     );
-    const baseAnchor = this.fit.origins[this.stones.indexOf(stone)]
+    const baseAnchor = this.fit.origins[this.fit.stones.indexOf(stone)]
       .clone()
       .applyQuaternion(this.fit.nativePose.rotation)
       .add(this.fit.nativePose.position);
     this.fit.apply(scale, this.state.profile);
+    this.band.layout();
     this.model.updateWorldMatrix(true, true);
     const anchor = stone
       .getWorldPosition(new T.Vector3())
@@ -407,6 +418,11 @@ export class JewelryStudio {
         .multiplyScalar(barycoord.x)
         .addScaledVector(vertex.fromBufferAttribute(pos, face.b), barycoord.y)
         .addScaledVector(vertex.fromBufferAttribute(pos, face.c), barycoord.z);
+      if (object.isInstancedMesh) {
+        const instance = new T.Matrix4();
+        object.getMatrixAt(this.focusPick.instanceId, instance);
+        this.focusPoint.applyMatrix4(instance);
+      }
       object.localToWorld(this.focusPoint);
     } else this.focusCenter();
   }
@@ -415,6 +431,7 @@ export class JewelryStudio {
     if (!metal) return;
     this.state.metal = id;
     this.bandMat.color.fromArray(metal.reflectance);
+    if (this.band.options) this.band.refreshFinish();
     this.invalidate(true);
   }
   setGems(center, accent) {
@@ -425,6 +442,17 @@ export class JewelryStudio {
     );
     const accentMix = [];
     this.fitCenter(colors[0]);
+    for (let side = 0; side < 2; side++) {
+      const accents = this.stones.filter(
+        (m) =>
+          !m.userData.bandHidden &&
+          m.userData.role !== "center" &&
+          (m.position.x > 0 ? 1 : 0) === side,
+      );
+      const sideStone = accents.find((m) => m.userData.role === "side");
+      this.shoulderProbes[side].stone =
+        sideStone ?? accents[Math.floor(accents.length / 2)] ?? null;
+    }
     const shared = new Map();
     for (const mesh of this.stones) {
       const isCenter = mesh.userData.role === "center",
@@ -434,7 +462,7 @@ export class JewelryStudio {
                 (g) => g.id === this.accentOverrides.get(mesh.name),
               )
             : colors[isCenter ? 0 : 1];
-      if (!isCenter && this.accentOverrides.size)
+      if (!mesh.userData.bandHidden && !isCenter && this.accentOverrides.size)
         accentMix.push({ gem, area: mesh.scale.x ** 2 });
       const side = mesh.position.x > 0 ? 1 : 0;
       const key = mesh.geometry.uuid + (isCenter ? "center" : side) + gem.id;
@@ -585,7 +613,11 @@ export class JewelryStudio {
     };
     const hit = (e) => {
       ray(e);
-      return this.model ? this.ray.intersectObject(this.model, true)[0] : null;
+      return this.model
+        ? this.ray
+            .intersectObject(this.model, true)
+            .find((h) => h.object.visible)
+        : null;
     };
     // A selection is committed on release, after ruling out orbit and pinch.
     const pointers = new Set();
@@ -698,6 +730,7 @@ export class JewelryStudio {
     this.scene.background = this.env;
     this.scene.backgroundRotation.copy(this.scene.environmentRotation);
     this.scene.fog = null;
+    this.band.metal.envMap = null;
     this.bandMat.envMap = null;
     this.bandMat.needsUpdate = true;
     for (const m of this.stones) m.visible = false;
@@ -707,7 +740,7 @@ export class JewelryStudio {
       shoulder.stone.getWorldPosition(shoulder.camera.position);
       shoulder.camera.update(this.renderer, this.scene);
     }
-    for (const m of this.stones) m.visible = true;
+    for (const m of this.stones) m.visible = !m.userData.bandHidden;
     // A second, filtered local probe captures the opposite shoulder and gallery
     // in polished metal. Both probes are reused during camera orbit and zoom.
     this.metalCamera.position
@@ -722,13 +755,14 @@ export class JewelryStudio {
     );
     this.bandMat.envMap = this.metalReflection.texture;
     this.bandMat.needsUpdate = true;
+    if (this.band.options) this.band.refreshFinish();
     this.scene.background = bg;
     this.scene.fog = fog;
   }
   invalidate(probe = false) {
     if (probe) {
       this.probeDirty = true;
-      this.renderer.shadowMap.needsUpdate = true;
+      if (!this.editingBand) this.renderer.shadowMap.needsUpdate = true;
     }
     this.lens.resetHistory();
     this.scheduleFrame();
@@ -772,6 +806,7 @@ export class JewelryStudio {
     const changed =
       !this.snapshot && this.controls.update(Math.min(dt / 1000, 0.06));
     if (
+      !this.editingBand &&
       this.probeDirty &&
       this.model &&
       this.env &&
@@ -793,6 +828,7 @@ export class JewelryStudio {
       mark.style.left = rect.left + (0.5 + screen.x * 0.5) * rect.width + "px";
       mark.style.top = rect.top + (0.5 - screen.y * 0.5) * rect.height + "px";
     }
+    this.onBandFrame?.();
     const refining = this.lens.draw(
       this.scene,
       focus,
@@ -839,7 +875,7 @@ export class JewelryStudio {
       changed ||
       this.state.spin ||
       this.moving ||
-      (this.probeDirty && this.env && this.model),
+      (!this.editingBand && this.probeDirty && this.env && this.model),
     );
     if (this.continuousFrame) this.scheduleFrame();
   }

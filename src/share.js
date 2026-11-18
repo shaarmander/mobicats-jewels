@@ -1,3 +1,4 @@
+import { validBand } from "./band-shape.js";
 const vector = (v) => v.toArray().map((n) => +n.toFixed(5));
 
 export function designLink(studio) {
@@ -17,6 +18,7 @@ export function designLink(studio) {
     "aperture",
   ])
     p.set(key, s[key]);
+  if (studio.band.options) p.set("band", JSON.stringify(studio.band.options));
   p.set("sparkle", studio.lens.sparkle);
   p.set("eye", vector(studio.camera.position));
   p.set("target", vector(studio.controls.target));
@@ -25,7 +27,14 @@ export function designLink(studio) {
     const { object, face, barycoord } = studio.focusPick;
     p.set(
       "focus",
-      [object.name, face.a, face.b, face.c, ...vector(barycoord)].join(","),
+      [
+        object.name,
+        face.a,
+        face.b,
+        face.c,
+        ...vector(barycoord),
+        ...(object.isInstancedMesh ? [studio.focusPick.instanceId] : []),
+      ].join(","),
     );
   }
   for (const [name, gem] of studio.accentOverrides)
@@ -40,6 +49,11 @@ export function readDesign(fragment, lib, rigs) {
   const p = new URLSearchParams(fragment.slice(1));
   if (p.get("v") !== "1") return null;
   const s = {};
+  if (p.has("band")) {
+    try {
+      s.band = validBand(JSON.parse(p.get("band")));
+    } catch {}
+  }
   for (const [key, items] of Object.entries({
     setting: lib.settings,
     cut: lib.cuts,
@@ -109,19 +123,28 @@ export function restoreView(studio, s) {
     studio.controls.target.fromArray(s.target);
     studio.controls.update();
   }
-  if (s.focus?.length === 7) {
+  if ([7, 8].includes(s.focus?.length)) {
     const [name, ...values] = s.focus,
       mesh = studio.model.getObjectByName(name);
-    const [a, b, c, x, y, z] = values.map(Number),
+    const [a, b, c, x, y, z, instanceId] = values.map(Number),
       pos = mesh?.geometry?.attributes.position;
     if (
       pos &&
+      (!mesh.isInstancedMesh ||
+        (Number.isInteger(instanceId) &&
+          instanceId >= 0 &&
+          instanceId < mesh.count)) &&
       [a, b, c].every((i) => Number.isInteger(i) && i >= 0 && i < pos.count) &&
       [x, y, z].every((n) => n >= 0 && n <= 1) &&
       Math.abs(x + y + z - 1) < 0.001
     ) {
       const barycoord = studio.focusPoint.clone().set(x, y, z);
-      studio.focusPick = { object: mesh, face: { a, b, c }, barycoord };
+      studio.focusPick = {
+        object: mesh,
+        face: { a, b, c },
+        barycoord,
+        instanceId,
+      };
       studio.focusRole = "picked";
       studio.fitCenter(
         studio.lib.gems.find((g) => g.id === studio.state.center),

@@ -85,7 +85,7 @@ export class CenterFit {
     this.restOnFloor(pos.array);
     this.model.updateMatrixWorld(true);
   }
-  restOnFloor(metal) {
+  restOnFloor(metal, other = [this.stonePoints]) {
     // Balance front and rear contacts after a wider basket changes the resting angle.
     let low = -0.45,
       high = 0.85,
@@ -97,7 +97,7 @@ export class CenterFit {
         b = Math.cos(pitch);
       let front = Infinity,
         rear = Infinity;
-      for (const vertices of [metal, this.stonePoints]) {
+      for (const vertices of [metal, ...other]) {
         for (let j = 1; j < vertices.length; j += 3) {
           const y = vertices[j],
             height = a * y + b * vertices[j + 1];
@@ -116,7 +116,7 @@ export class CenterFit {
 }
 
 // Signed tetrahedral volumes of the closed, welded metal surface in mm³.
-function meshVolume(geometry) {
+export function meshVolume(geometry) {
   const v = geometry.attributes.position.array,
     ids = geometry.index.array;
   let volume = 0;

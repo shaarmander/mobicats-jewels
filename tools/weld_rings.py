@@ -206,7 +206,7 @@ def sculpted_band(style):
             )
 
 
-def metal_parts(data, setting):
+def metal_parts(data, setting, head_only=False):
     parts = []
     for p in data["parts"]:
         if p["name"].startswith("head"):
@@ -222,12 +222,14 @@ def metal_parts(data, setting):
                 )
             )
             parts.extend(basket(p, stone, setting))
+        elif head_only:
+            continue
         elif p["name"] == "pave-beads":
             parts.extend(round_beads(p))
         elif setting not in SCULPTED | {"split"} or p["name"] != "shank":
             parts.append((p["vertices"], p["triangles"]))
     center = data["stones"][0]
-    if setting in SCULPTED:
+    if setting in SCULPTED and not head_only:
         parts.extend(sculpted_band(setting))
     if setting == "petal":
         # Four open lobes spring from the shank and meet the basket just below the girdle.
@@ -241,7 +243,7 @@ def metal_parts(data, setting):
                 )
                 z = sz * (0.42 + 1.58 * np.sin(math.pi * t))
                 parts.append(shoulder_rail(a, r, z, 0.40))
-    if setting == "split":
+    if setting == "split" and not head_only:
         a = np.linspace(-math.pi, math.pi, 220)
         fork = np.exp(-((np.abs(a) / 0.85) ** 3))
         for sign in [-1, 1]:
@@ -257,11 +259,11 @@ def metal_parts(data, setting):
     return parts
 
 
-def weld(source, destination):
+def weld(source, destination, head_only=False):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     data = json.loads(source.read_bytes())
     vertices, faces = [], []
-    for v, f in metal_parts(data, source.stem.split("-")[0]):
+    for v, f in metal_parts(data, source.stem.split("-")[0], head_only):
         off = len(vertices)
         vertices.extend(v)
         faces.extend((i + off, j + off, k + off) for i, j, k in f)

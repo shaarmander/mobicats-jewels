@@ -122,7 +122,17 @@
       </div>
       <div id="design-body">
         <div class="section">
-          <div class="caption">Setting</div>
+          <div class="section-label band-entry">
+            <span class="caption">Setting</span
+            ><button
+              type="button"
+              id="band-open"
+              aria-controls="band-panel"
+              aria-expanded="false"
+            >
+              Edit band <i data-icon="adjust"></i>
+            </button>
+          </div>
           <button
             id="styles-open"
             class="library-btn"
@@ -262,6 +272,101 @@
       <div class="list-count" id="gem-count"></div>
     </aside>
     <span id="part-mark" hidden aria-hidden="true"></span>
+    <aside
+      id="band-panel"
+      class="card flyout library"
+      aria-labelledby="band-title"
+      hidden
+    >
+      <div class="card-head">
+        <h2 id="band-title">Band editor</h2>
+        <button
+          class="bare"
+          data-close="band-panel"
+          aria-label="Close band editor"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <div class="band-tabs segmented" role="group" aria-label="Band controls">
+        <button data-band-tab="shape">Shape</button
+        ><button data-band-tab="shoulders">Shoulders</button
+        ><button data-band-tab="details">Details</button>
+      </div>
+      <div data-band-page="shape">
+        <div class="band-shapes" role="group" aria-label="Cross-section"></div>
+        <label class="band-slider"
+          >Back width <output id="band-width-out" for="band-width"></output
+          ><input id="band-width" type="range" min="1.6" max="6" step=".1"
+        /></label>
+        <label class="band-slider"
+          >Thickness
+          <output id="band-thickness-out" for="band-thickness"></output
+          ><input
+            id="band-thickness"
+            type="range"
+            min="1.4"
+            max="3.4"
+            step=".1"
+        /></label>
+        <canvas
+          id="band-section"
+          width="240"
+          height="88"
+          aria-label="Live band cross-section"
+        ></canvas>
+      </div>
+      <div data-band-page="shoulders" hidden>
+        <div
+          class="band-options"
+          data-options="shoulders"
+          aria-label="Shoulder shape"
+        ></div>
+        <label class="band-slider"
+          >Shoulder width <output id="band-front-out" for="band-front"></output
+          ><input id="band-front" type="range" min="1.6" max="6.5" step=".1"
+        /></label>
+        <p class="band-hint">
+          Drag the handles on the ring to shape both shoulders or widen the
+          back.
+        </p>
+      </div>
+      <div data-band-page="details" hidden>
+        <div class="caption">Surface finish</div>
+        <div
+          class="band-options"
+          data-options="finish"
+          aria-label="Surface finish"
+        ></div>
+        <div class="caption">Edge</div>
+        <div
+          class="band-options"
+          data-options="edge"
+          aria-label="Edge treatment"
+        ></div>
+        <label class="band-slider"
+          >Pavé per side <output id="band-pave-out" for="band-pave"></output
+          ><input id="band-pave" type="range" min="0" max="14" step="1"
+        /></label>
+      </div>
+      <div class="band-footer">
+        <button id="band-metal">Change metal</button
+        ><button id="band-reset">Reset band</button>
+      </div>
+      <small id="band-status" role="status"></small>
+    </aside>
+    <div id="band-handles" hidden>
+      <button data-handle="width" aria-label="Drag to change back width">
+        Back ↔</button
+      ><button data-handle="front" aria-label="Drag to change shoulder width">
+        Shoulder ↔</button
+      ><button
+        data-handle="pave"
+        aria-label="Drag along the band to change pavé coverage"
+      >
+        Pavé ↔
+      </button>
+    </div>
     <aside id="setting-picker" class="card flyout library" hidden>
       <div class="card-head">
         <h2>Setting metal</h2>
