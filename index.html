@@ -144,8 +144,8 @@
           >
             <span class="facet-chip" id="chip"></span
             ><span
-              ><b id="stone-name">Emerald</b
-              ><small id="stone-family">Beryl</small></span
+              ><b id="stone-name">Diamond</b
+              ><small id="stone-family">Diamond</small></span
             ><i data-icon="grid"></i>
           </button>
         </div>
@@ -339,8 +339,39 @@
         ><button id="center-focus">Center stone</button>
       </div>
     </aside>
+    <aside
+      class="card flyout top-panel"
+      id="share-panel"
+      hidden
+      aria-labelledby="share-heading"
+    >
+      <div class="card-head">
+        <h2 id="share-heading">Share this ring</h2>
+        <button
+          class="bare"
+          data-close="share-panel"
+          aria-label="Close sharing"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <div class="action-pair">
+        <button id="copy-design">Copy design link</button
+        ><button id="save-image">Save image</button>
+      </div>
+      <input id="share-url" aria-label="Design link" readonly hidden />
+      <small id="share-feedback" role="status"></small>
+    </aside>
     <div class="object-label">
-      <h2 id="design-title">Emerald trilogy</h2>
+      <button
+        id="share-toggle"
+        aria-controls="share-panel"
+        aria-expanded="false"
+        disabled
+      >
+        Share this ring <i data-icon="share"></i>
+      </button>
+      <h2 id="design-title">Diamond trilogy</h2>
       <span id="design-detail">Emerald cut · 18k yellow gold</span>
       <small class="part-hint">Tap a stone or the band to edit</small>
     </div>

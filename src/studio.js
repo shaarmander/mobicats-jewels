@@ -20,7 +20,7 @@ export class JewelryStudio {
       cut: "emerald",
       carats: 1.5,
       profile: "classic",
-      center: "emerald",
+      center: "natural-diamond",
       accent: "natural-diamond",
       metal: "yellow-gold",
       rig: "softbox",
@@ -213,6 +213,7 @@ export class JewelryStudio {
     this.reset();
     this.resize();
     document.addEventListener("visibilitychange", () => {
+      this.continuousFrame = false;
       if (!document.hidden) this.invalidate();
     });
   }
@@ -731,18 +732,38 @@ export class JewelryStudio {
     this.lens.resetHistory();
     this.scheduleFrame();
   }
+  captureImage() {
+    // Finish the idle samples over ordinary animation frames. Capture while
+    // the completed WebGL buffer is still valid, before browser compositing.
+    return new Promise((resolve, reject) => {
+      if (this.snapshot || this.tryingOn) {
+        reject(new Error("Capture unavailable"));
+        return;
+      }
+      this.snapshot = { resolve, reject, model: this.model };
+      this.scheduleFrame();
+    });
+  }
   scheduleFrame() {
     if (!this.raf && !document.hidden)
       this.raf = requestAnimationFrame((t) => this.frame(t));
   }
   frame(now) {
     this.raf = 0;
+    if (
+      this.snapshot &&
+      (this.tryingOn || this.snapshot.model !== this.model)
+    ) {
+      this.snapshot.reject(new Error("Studio view changed"));
+      this.snapshot = null;
+    }
     if (this.tryingOn) return;
     const dt = now - this.lastTime;
     this.lastTime = now;
-    this.controls.autoRotate = this.state.spin;
+    this.controls.autoRotate = this.state.spin && !this.snapshot;
     this.causticMap.update();
-    const changed = this.controls.update(Math.min(dt / 1000, 0.06));
+    const changed =
+      !this.snapshot && this.controls.update(Math.min(dt / 1000, 0.06));
     if (
       this.probeDirty &&
       this.model &&
@@ -769,10 +790,19 @@ export class JewelryStudio {
       this.scene,
       focus,
       this.state.aperture,
-      changed || this.state.spin || this.moving,
+      !this.snapshot && (changed || this.state.spin || this.moving),
     );
+    if (this.snapshot && !refining && !this.probeDirty) {
+      const { resolve, reject } = this.snapshot;
+      this.snapshot = null;
+      this.canvas.toBlob(
+        (blob) =>
+          blob ? resolve(blob) : reject(new Error("PNG encoding failed")),
+        "image/png",
+      );
+    }
     const samplingBrand = this.brand.update(now, this.state.rig);
-    if (dt > 0 && dt < 150) this.frames.push(dt);
+    if (this.continuousFrame && dt > 0) this.frames.push(dt);
     else this.frames = [];
     if (this.frames.length > 90) this.frames.shift();
     if (now - this.lastStats > 350 && this.frames.length > 5) {
@@ -781,14 +811,14 @@ export class JewelryStudio {
       );
       this.lastStats = now;
     }
-    if (
+    this.continuousFrame = Boolean(
       samplingBrand ||
       refining ||
       changed ||
       this.state.spin ||
       this.moving ||
-      (this.probeDirty && this.env && this.model)
-    )
-      this.scheduleFrame();
+      (this.probeDirty && this.env && this.model),
+    );
+    if (this.continuousFrame) this.scheduleFrame();
   }
 }

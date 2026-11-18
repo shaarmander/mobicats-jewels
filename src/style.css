@@ -1308,3 +1308,30 @@ input[type="range"] {
     animation: none;
   }
 }
+
+#share-toggle {
+  pointer-events: auto;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  background: var(--paper, #f7f6ed);
+  color: #26332a;
+  border: 1px solid #c9cabe;
+  border-radius: 20px;
+  padding: 6px 11px;
+  margin-bottom: 7px;
+  font-size: 12px;
+}
+#share-toggle svg {
+  width: 15px;
+  height: 15px;
+}
+#share-feedback:not(:empty) {
+  display: block;
+  margin-top: 10px;
+}
+#share-url {
+  width: 100%;
+  font-size: 16px;
+  margin-top: 10px;
+}

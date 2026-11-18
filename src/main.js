@@ -1,4 +1,5 @@
 import "./style.css";
+import { designLink, readDesign, restoreView } from "./share.js";
 import lib from "../public/assets/library.json";
 import rigs from "../public/assets/lights/lights.json";
 import poses from "../public/assets/ring-poses.json";
@@ -7,6 +8,7 @@ import { JewelryStudio } from "./studio.js";
 
 const $ = (id) => document.getElementById(id);
 const icons = {
+  share: '<path d="M12 15V3m-4 4 4-4 4 4M7 10H4v11h16V10h-3"/>',
   camera: '<path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="4"/>',
   star: '<path d="m12 3 2.8 5.7 6.3.9-4.6 4.5 1.1 6.3-5.6-3-5.6 3 1.1-6.3L3 9.6l6.2-.9z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2m0-14-2 2M7 17l-2 2"/>',
@@ -53,6 +55,7 @@ const panels = [
   "setting-picker",
   "light-panel",
   "lens-panel",
+  "share-panel",
 ];
 function panel(id, hit = null) {
   $("cut-gem").hidden = !(
@@ -84,6 +87,7 @@ function panel(id, hit = null) {
     ["cuts-open", "cuts"],
     ["light-toggle", "light-panel"],
     ["lens-toggle", "lens-panel"],
+    ["share-toggle", "share-panel"],
   ])
     $(a).setAttribute("aria-expanded", String(b === id));
   if (id === "library") {
@@ -232,6 +236,7 @@ async function design(setting, cut) {
   loadingDesign = true;
   loadingEstimate();
   const token = ++request;
+  $("share-toggle").disabled = true;
   $("try-on").disabled = true;
   notice("Loading setting…");
   try {
@@ -250,7 +255,8 @@ async function design(setting, cut) {
     }
     console.error(e);
   } finally {
-    if (token === request) $("try-on").disabled = !studio.model;
+    if (token === request)
+      $("try-on").disabled = $("share-toggle").disabled = !studio.model;
   }
 }
 let lightRequest = 0;
@@ -298,6 +304,46 @@ async function startTryOn() {
   }
 }
 function bind() {
+  $("share-toggle").onclick = () => {
+    $("share-feedback").textContent = "";
+    $("share-url").hidden = true;
+    togglePanel("share-panel");
+  };
+  $("copy-design").onclick = async () => {
+    const url = designLink(studio);
+    try {
+      await navigator.clipboard.writeText(url);
+      $("share-feedback").textContent = "Design link copied.";
+    } catch {
+      const input = $("share-url");
+      input.value = url;
+      input.hidden = false;
+      input.select();
+      $("share-feedback").textContent = "Copy the selected link.";
+    }
+  };
+  $("save-image").onclick = async () => {
+    const button = $("save-image");
+    button.disabled = true;
+    $("share-feedback").textContent = "Preparing image�";
+    try {
+      const name = studio.state.setting + "-" + studio.state.cut,
+        blob = await studio.captureImage();
+      const url = URL.createObjectURL(blob),
+        link = document.createElement("a");
+      link.href = url;
+      link.download = "mobicats-jewels-" + name + ".png";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      $("share-feedback").textContent = "Image ready.";
+    } catch {
+      $("share-feedback").textContent = "Image could not be saved. Try again.";
+    } finally {
+      button.disabled = false;
+    }
+  };
   $("try-on").onclick = startTryOn;
   $("try-close").onclick = () => trySession?.close();
   $("try-retry").onclick = () => {
@@ -529,15 +575,55 @@ try {
     (f) => ($("perf").textContent = Math.round(f) + " FPS"),
     (s) => ($("focus-label").textContent = s),
   );
+  const shared = readDesign(location.hash, lib, rigs);
+  if (shared) {
+    for (const key of [
+      "setting",
+      "cut",
+      "profile",
+      "carats",
+      "center",
+      "accent",
+      "metal",
+      "rig",
+      "rotation",
+      "exposure",
+      "aperture",
+    ])
+      if (shared[key] !== undefined) studio.state[key] = shared[key];
+    studio.lens.sparkle = shared.sparkle ?? studio.lens.sparkle;
+  }
+  window.addEventListener("hashchange", (event) => {
+    if (
+      [event.oldURL, event.newURL].some(
+        (url) =>
+          new URLSearchParams(new URL(url).hash.slice(1)).get("v") === "1",
+      )
+    )
+      location.reload();
+  });
   bind();
   loadingEstimate();
   paint();
   await Promise.all([
-    studio.setLight("softbox"),
-    studio.setDesign("trilogy", "emerald"),
+    studio.setLight(studio.state.rig),
+    studio.setDesign(studio.state.setting, studio.state.cut),
   ]);
   paint();
-  $("try-on").disabled = false;
+  if (shared) {
+    restoreView(studio, shared);
+    for (const [id, value] of [
+      ["azimuth", studio.state.rotation],
+      ["exposure", Math.log2(studio.state.exposure)],
+      ["sparkle", studio.lens.sparkle * 100],
+      ["dof", studio.state.aperture * 100],
+    ]) {
+      $(id).value = value;
+      $(id).dispatchEvent(new Event("input"));
+    }
+    paint();
+  }
+  $("share-toggle").disabled = $("try-on").disabled = false;
   notice("");
 } catch (e) {
   console.error(e);
