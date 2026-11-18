@@ -268,7 +268,11 @@ export class CustomBand {
     if (!!m.bumpMap !== !!map) m.needsUpdate = true;
     m.bumpMap = map;
     m.bumpScale = finish === "brushed" ? 0.014 : 0.095;
-    m.roughness = { polished: 0.085, brushed: 0.34, hammered: 0.16 }[finish];
+    m.roughness = {
+      polished: s.polishRoughness,
+      brushed: 0.34,
+      hammered: 0.16,
+    }[finish];
   }
   firstAngle() {
     let start = 0.26;

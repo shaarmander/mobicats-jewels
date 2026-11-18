@@ -8,6 +8,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import { cutMaterial, setStoneOptics, Lens } from "./optics.js";
 
+import { DesktopMetalReflection } from "./metal-reflection.js";
 import { CustomBand } from "./custom-band.js";
 
 export class JewelryStudio {
@@ -84,15 +85,25 @@ export class JewelryStudio {
       (navigator.deviceMemory && navigator.deviceMemory <= 4);
     this.compactGPU = compactGPU;
     this.lens.compactGPU = compactGPU;
-    const probeSize = Math.min(
-      compactGPU ? 512 : 1024,
-      this.renderer.capabilities.maxCubemapSize,
-      Math.floor(this.renderer.capabilities.maxTextureSize / 4),
-    );
+    const highDetailReflections =
+      !compactGPU &&
+      this.renderer.capabilities.maxCubemapSize >= 2048 &&
+      this.renderer.capabilities.maxTextureSize >= 2048 &&
+      this.renderer.extensions.has("EXT_color_buffer_float");
+    const probeSize = highDetailReflections
+      ? 1536
+      : Math.min(
+          compactGPU ? 512 : 1024,
+          this.renderer.capabilities.maxCubemapSize,
+          Math.floor(this.renderer.capabilities.maxTextureSize / 4),
+        );
     this.probeTarget = new T.WebGLCubeRenderTarget(probeSize, {
-      type: this.renderer.extensions.has("EXT_color_buffer_float")
-        ? T.HalfFloatType
-        : T.UnsignedByteType,
+      format: highDetailReflections ? T.RGBFormat : T.RGBAFormat,
+      type: highDetailReflections
+        ? T.UnsignedInt101111Type
+        : this.renderer.extensions.has("EXT_color_buffer_float")
+          ? T.HalfFloatType
+          : T.UnsignedByteType,
       generateMipmaps: true,
       minFilter: T.LinearMipmapLinearFilter,
     });
@@ -100,6 +111,7 @@ export class JewelryStudio {
     // across the small pav� stones on that shoulder.
     this.shoulderProbes = [0, 1].map(() => {
       const target = new T.WebGLCubeRenderTarget(probeSize / 2, {
+        format: this.probeTarget.texture.format,
         type: this.probeTarget.texture.type,
         generateMipmaps: true,
         minFilter: T.LinearMipmapLinearFilter,
@@ -108,9 +120,15 @@ export class JewelryStudio {
       this.scene.add(camera);
       return { target, camera, stone: null };
     });
-    this.metalTarget = new T.WebGLCubeRenderTarget(probeSize, {
-      type: this.probeTarget.texture.type,
-    });
+    this.desktopMetal = highDetailReflections
+      ? new DesktopMetalReflection(2048)
+      : null;
+    this.polishRoughness = highDetailReflections ? 0.03 : 0.085;
+    this.metalTarget =
+      this.desktopMetal?.capture ??
+      new T.WebGLCubeRenderTarget(probeSize, {
+        type: this.probeTarget.texture.type,
+      });
     this.metalCamera = new T.CubeCamera(0.15, 190, this.metalTarget);
     this.scene.add(this.metalCamera);
     this.prefilter = new T.PMREMGenerator(this.renderer);
@@ -119,8 +137,10 @@ export class JewelryStudio {
     this.scene.add(this.probeCamera);
     this.bandMat = new T.MeshStandardMaterial({
       metalness: 1,
-      roughness: 0.085,
+      roughness: this.polishRoughness,
     });
+    this.desktopMetal?.apply(this.bandMat);
+    this.desktopMetal?.apply(this.band.metal);
     this.scene.add(new T.HemisphereLight(0xffffff, 0xa19a8b, 0.6));
     this.key = new T.DirectionalLight(0xffffff, 1.45);
     this.key.castShadow = true;
@@ -730,6 +750,7 @@ export class JewelryStudio {
     this.scene.background = this.env;
     this.scene.backgroundRotation.copy(this.scene.environmentRotation);
     this.scene.fog = null;
+    this.desktopMetal?.pause();
     this.band.metal.envMap = null;
     this.bandMat.envMap = null;
     this.bandMat.needsUpdate = true;
@@ -749,10 +770,16 @@ export class JewelryStudio {
     this.ground.visible = false;
     this.metalCamera.update(this.renderer, this.scene);
     this.ground.visible = true;
-    this.metalReflection = this.prefilter.fromCubemap(
-      this.metalTarget.texture,
-      this.metalReflection,
-    );
+    this.metalReflection = this.desktopMetal
+      ? this.desktopMetal.filter(
+          this.renderer,
+          this.prefilter,
+          this.metalReflection,
+        )
+      : this.prefilter.fromCubemap(
+          this.metalTarget.texture,
+          this.metalReflection,
+        );
     this.bandMat.envMap = this.metalReflection.texture;
     this.bandMat.needsUpdate = true;
     if (this.band.options) this.band.refreshFinish();
