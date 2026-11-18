@@ -18,6 +18,8 @@ import {
 import { cutSeats } from "./pave-seats.js";
 import { meshVolume } from "./center-fit.js";
 
+// Cameras use layer zero. Individual melee hit targets stay available to the picker.
+export const pavePickLayer = 1;
 const point = new T.Vector3(),
   matrix = new T.Matrix4();
 const geometry = new T.BufferGeometry();
@@ -165,6 +167,10 @@ export class CustomBand {
     this.group.removeFromParent();
     if (this.blank !== this.shank.geometry) this.blank.dispose();
     this.shank.geometry.dispose();
+    this.batches?.traverse((m) => {
+      if (m.isInstancedMesh) m.dispose();
+    });
+    this.batches = null;
     this.grains?.dispose();
     this.grains = null;
     this.beads?.dispose();
@@ -372,6 +378,8 @@ export class CustomBand {
             m = new T.Mesh(geometry, this.metal);
             m.userData = { ...melee.extras, seatId: id };
             m.name = "pave-" + id;
+            m.layers.set(pavePickLayer);
+            m.matrixAutoUpdate = false;
             this.group.add(m);
           }
           active.delete(id);
@@ -382,6 +390,39 @@ export class CustomBand {
       ...this.studio.fit.stones.filter((m) => m.userData.role !== "pave"),
       ...this.gems,
     ];
+  }
+  syncBatches() {
+    if (!this.group) return;
+    if (!this.batches) {
+      this.batches = new T.Group();
+      this.group.add(this.batches);
+    }
+    const groups = new Map();
+    for (const m of this.gems) {
+      if (!m.visible) continue;
+      if (!groups.has(m.material)) groups.set(m.material, []);
+      groups.get(m.material).push(m);
+    }
+    const previous = new Map(this.batches.children.map((b) => [b.material, b]));
+    for (const [material, members] of groups) {
+      let batch = previous.get(material);
+      if (!batch || batch.instanceMatrix.count < members.length) {
+        batch = new T.InstancedMesh(geometry, material, members.length);
+        batch.raycast = () => {}; // The individual stones retain their names and hit geometry.
+        this.batches.add(batch);
+      } else previous.delete(material);
+      batch.count = members.length;
+      members.forEach((m, i) => {
+        m.updateMatrix();
+        batch.setMatrixAt(i, m.matrix);
+      });
+      batch.instanceMatrix.needsUpdate = true;
+      batch.computeBoundingSphere();
+    }
+    for (const batch of previous.values()) {
+      batch.removeFromParent();
+      batch.dispose();
+    }
   }
   stonePoint(angle, side = 1, t = 0.0) {
     return this.surface.section(angle, 0, side, t);

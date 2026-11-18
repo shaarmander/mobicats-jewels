@@ -38,7 +38,7 @@ The production build is a static site in `dist/` and can be served from any web 
 
 ## Rendering
 
-The Three.js / WebGL 2 renderer follows refracted and reflected rays through each stone’s facet planes. Light absorption depends on distance inside the stone. Shared HDR studio lighting and local reflection probes shade the polished casting. Directional floor caustics are baked for each reference setting and cut, then adjusted for light direction, material and center-stone size at runtime.
+The Three.js / WebGL 2 renderer follows refracted and reflected rays through each stone’s facet planes. For complex cuts, a small 3D lookup tells each ray which facet planes it can reach at its next bounce. Pavé stones that share a gem material and shoulder reflection render in one draw call while each stone stays individually selectable. Light absorption depends on distance inside the stone. Shared HDR studio lighting and local reflection probes shade the polished casting. Directional floor caustics are baked for each reference setting and cut, then adjusted for light direction, material and center-stone size at runtime.
 
 Desktop GPUs on the high-detail setting capture 2,048 pixels per face for the metal, 1,536 for the center stone and 768 for each shoulder. Polished highlights sample the packed HDR cube directly. Brushed and hammered metal use a 512-pixel filtered cube source. Orbit and zoom reuse these reflections. Phones use 512-pixel metal and center captures and 256-pixel shoulder captures. [Compare the polished metal at the same zoom](docs/reflection-detail.webp).
 

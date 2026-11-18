@@ -9,7 +9,7 @@ import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import { cutMaterial, setStoneOptics, Lens } from "./optics.js";
 
 import { DesktopMetalReflection } from "./metal-reflection.js";
-import { CustomBand } from "./custom-band.js";
+import { CustomBand, pavePickLayer } from "./custom-band.js";
 
 export class JewelryStudio {
   constructor(canvas, lib, rigs, poses, onFrame, onFocus) {
@@ -210,6 +210,7 @@ export class JewelryStudio {
     this.ground.receiveShadow = true;
     this.scene.add(this.ground);
     this.ray = new T.Raycaster();
+    this.ray.layers.enable(pavePickLayer);
     this.ndc = new T.Vector2();
     this.focusPoint = new T.Vector3(0, 14, 0);
     this.focusRole = "center";
@@ -405,7 +406,7 @@ export class JewelryStudio {
     this.fitCenter(this.lib.gems.find((g) => g.id === this.state.center));
     this.invalidate(true);
   }
-  fitCenter(gem) {
+  fitCenter(gem, batch = true) {
     if (!this.fit) return;
     const stone = this.fit.center;
     const diamond = this.lib.gems.find((g) => g.id === "natural-diamond");
@@ -419,6 +420,7 @@ export class JewelryStudio {
       .add(this.fit.nativePose.position);
     this.fit.apply(scale, this.state.profile);
     this.band.layout();
+    if (batch) this.band.syncBatches();
     for (let side = 0; side < 2; side++) {
       const accents = this.stones.filter(
         (m) =>
@@ -473,7 +475,7 @@ export class JewelryStudio {
       this.lib.gems.find((g) => g.id === id),
     );
     const accentMix = [];
-    this.fitCenter(colors[0]);
+    this.fitCenter(colors[0], false);
     const shared = new Map();
     for (const mesh of this.stones) {
       const isCenter = mesh.userData.role === "center",
@@ -519,6 +521,7 @@ export class JewelryStudio {
         material.uniformsNeedUpdate = true;
       };
     }
+    this.band.syncBatches();
     this.causticMap.setGems(colors, accentMix);
     this.materials = this.materials.filter((m) => {
       if (shared.has(m.userData.key)) return true;
@@ -761,6 +764,7 @@ export class JewelryStudio {
     this.band.metal.envMap = null;
     this.bandMat.envMap = null;
     this.bandMat.needsUpdate = true;
+    if (this.band.batches) this.band.batches.visible = false;
     for (const m of this.stones) m.visible = false;
     this.probeCamera.update(this.renderer, this.scene);
     for (const shoulder of this.shoulderProbes) {
@@ -769,6 +773,7 @@ export class JewelryStudio {
       shoulder.camera.update(this.renderer, this.scene);
     }
     for (const m of this.stones) m.visible = !m.userData.bandHidden;
+    if (this.band.batches) this.band.batches.visible = true;
     // A second, filtered local probe captures the opposite shoulder and gallery
     // in polished metal. Both probes are reused during camera orbit and zoom.
     this.metalCamera.position

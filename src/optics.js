@@ -1,4 +1,5 @@
 import * as T from "three";
+import { facetUniforms, exitQuery } from "./facet-grid.js";
 import { densities, pathWeights } from "./caustics.js";
 
 // A rasterized front facet seeds a bounded path in the stone's own coordinate system.
@@ -13,7 +14,9 @@ export function setStoneOptics(material, gem) {
 }
 export function cutMaterial(mesh, center, probe) {
   const planes = mesh.userData.planes.map((p) => new T.Vector4(...p));
+  const grid = facetUniforms(mesh);
   const uniforms = {
+    ...grid,
     planes: { value: planes },
     indices: { value: new T.Vector3() },
     density: { value: Array.from({ length: 4 }, () => new T.Vector3()) },
@@ -24,18 +27,47 @@ export function cutMaterial(mesh, center, probe) {
   };
   return new T.ShaderMaterial({
     uniforms,
-    defines: { PLANE_COUNT: planes.length, PATH_LIMIT: center ? 18 : 7 },
+    defines: {
+      ...(grid ? { FACET_GRID: 1 } : {}),
+      ...(mesh.userData.seatId !== undefined ? { BATCHED_MELEE: 1 } : {}),
+      PLANE_COUNT: planes.length,
+      PATH_LIMIT: center ? 18 : 7,
+    },
     vertexShader: `
       varying vec3 pObject; varying vec3 facet;
-      void main(){pObject=position; facet=normal;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}
-    `,
+      #ifdef BATCHED_MELEE
+        flat varying vec3 localEye;
+        flat varying mat3 worldAxes;
+        flat varying float mmPerUnit;
+      #endif
+      void main(){
+        pObject=position; facet=normal;
+        #ifdef BATCHED_MELEE
+          mat4 world=modelMatrix*instanceMatrix;
+          worldAxes=mat3(world);
+          // Every melee instance and the try-on mount use uniform positive scale.
+          localEye=transpose(worldAxes)*(cameraPosition-world[3].xyz)/dot(worldAxes[0],worldAxes[0]);
+          mmPerUnit=length(instanceMatrix[0].xyz);
+          gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.);
+        #else
+          gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);
+        #endif
+      }`,
     fragmentShader: `
       varying vec3 pObject; varying vec3 facet;
       uniform vec4 planes[PLANE_COUNT];
-      uniform vec3 indices,density[4],localEye;
+      uniform vec3 indices,density[4];
+      ${exitQuery}
       ${pathWeights}
-      uniform float mmPerUnit;
-      uniform mat3 worldAxes;
+      #ifdef BATCHED_MELEE
+        flat varying vec3 localEye;
+        flat varying mat3 worldAxes;
+        flat varying float mmPerUnit;
+      #else
+        uniform vec3 localEye;
+        uniform float mmPerUnit;
+        uniform mat3 worldAxes;
+      #endif
       uniform samplerCube probe;
       float fresnel(float c,float a,float b){
         float s=(a*a)/(b*b)*max(0.,1.-c*c);
@@ -58,15 +90,8 @@ export function cutMaterial(mesh, center, probe) {
         float throughput=1.-reflected, pathMm=0.;
         vec3 dir=refract(incident,entryNormal,1./ior), p=pObject;
         for(int step=0;step<PATH_LIMIT;step++){
-          float numerator=1e7,denominator=1.;int face=0;
-          for(int i=0;i<PLANE_COUNT;i++){
-            vec4 plane=planes[i];
-            float den=dot(plane.xyz,dir),num=plane.w-dot(plane.xyz,p);
-            if(den>1e-6 && num>.000008*den && num*denominator<numerator*den){
-              numerator=num;denominator=den;face=i;
-            }
-          }
-          float length=numerator/denominator;
+          int face;
+          float length=nextFacet(p,dir,face);
           if(length>1e5)break;
           p+=dir*length;
           pathMm+=length*mmPerUnit;

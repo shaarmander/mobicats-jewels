@@ -110,7 +110,12 @@ export class TryOn {
     ring.position.set(0, 0, 0);
     ring.quaternion.identity();
     ring.traverse((mesh) => {
-      if (!mesh.isMesh || !mesh.material.uniforms?.localEye) return;
+      if (
+        !mesh.isMesh ||
+        mesh.isInstancedMesh ||
+        !mesh.material.uniforms?.localEye
+      )
+        return;
       mesh.onBeforeRender = (_r, _s, c) => {
         const u = mesh.material.uniforms;
         u.mmPerUnit.value = mesh.userData.mmPerUnit;
@@ -244,6 +249,9 @@ export class TryOn {
     this.video.remove();
     this.tracker.close();
     this.videoMap?.dispose();
+    this.mount?.traverse((m) => {
+      if (m.isInstancedMesh) m.dispose();
+    });
     this.mask?.geometry.dispose();
     this.mask?.material.dispose();
     this.studio.tryingOn = false;
