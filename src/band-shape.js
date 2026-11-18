@@ -4,6 +4,7 @@ import { paveDefaults } from "./pave.js";
 const tau = Math.PI * 2;
 const smooth = T.MathUtils.smoothstep;
 export const bandChoices = {
+  coverage: ["shoulders", "threeQuarter", "full"],
   sizing: ["graduated", "fixed"],
   shape: ["round", "flat", "domed", "knife"],
   shoulders: ["straight", "taper", "flare", "split"],

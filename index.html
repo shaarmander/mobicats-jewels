@@ -350,6 +350,13 @@
         ></div>
       </div>
       <div data-band-page="pave" hidden>
+        <div class="caption">Band coverage</div>
+        <div
+          class="band-options"
+          data-options="coverage"
+          role="group"
+          aria-label="Band coverage"
+        ></div>
         <label class="band-slider"
           >Rows across the band
           <output id="band-rows-out" for="band-rows"></output
@@ -377,7 +384,7 @@
           aria-label="Stone sizing on taper"
         ></div>
         <p class="band-hint" id="pave-fit" role="status"></p>
-        <label class="band-slider"
+        <label class="band-slider" id="band-position-control"
           >Positions per side
           <output id="band-pave-out" for="band-pave"></output
           ><input id="band-pave" type="range" min="0" max="14" step="1"

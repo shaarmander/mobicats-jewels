@@ -9,6 +9,8 @@ import { diameterFor } from "./pave.js";
 const $ = (id) => document.getElementById(id);
 const mm = (n) => n.toFixed(1) + " mm";
 const names = {
+  threeQuarter: "Three-quarter",
+  full: "Full eternity",
   knife: "Knife-edge",
   beaded: "Beaded",
   bevel: "Beveled",
@@ -200,7 +202,9 @@ export class BandPanel {
     }
     const row = this.s.band.row(),
       stones = row.seats;
-    const wanted = o.rows * o.pave * 2;
+    const manual = o.coverage === "shoulders";
+    $("band-position-control").hidden = !manual;
+    const wanted = manual ? o.rows * o.pave * 2 : row.requested;
     const weight = this.s.stones.reduce((sum, m) => {
       if (!m.visible || m.userData.role !== "pave") return sum;
       const gem = this.s.lib.gems.find(
@@ -217,20 +221,30 @@ export class BandPanel {
           Math.max(...ds).toFixed(2) +
           " mm"
         : "";
+    const pitches = row.rowPitches;
+    const pitchLabel =
+      pitches.length &&
+      Math.max(...pitches).toFixed(2) !== Math.min(...pitches).toFixed(2)
+        ? Math.min(...pitches).toFixed(2) +
+          "–" +
+          Math.max(...pitches).toFixed(2)
+        : row.pitchMm.toFixed(2);
     $("pave-fit").textContent = !wanted
-      ? "Add positions to set stones on both shoulders."
+      ? manual
+        ? "Add positions to set stones on both shoulders."
+        : "No stones fit this coverage."
       : (stones.length
           ? stones.length +
             " stones · " +
             range +
             " · " +
-            row.pitchMm.toFixed(2) +
+            pitchLabel +
             " mm fitted pitch. " +
             weight.toFixed(3) +
             " ct total."
           : "No stones fit.") +
         (stones.length < wanted
-          ? " Widen the shoulders, reduce stone size or use fewer rows."
+          ? " Some positions need a wider band, smaller stones or fewer rows."
           : "");
     $("band-reset").disabled = !(
       (this.s.band.options && !this.s.band.preset) ||
@@ -286,7 +300,10 @@ export class BandPanel {
     $("band-handles").hidden = this.tab === "shape";
     for (const e of this.handles) {
       const k = e.dataset.handle;
-      e.hidden = k === "pave" ? this.tab !== "pave" : this.tab !== "shoulders";
+      e.hidden =
+        k === "pave"
+          ? this.tab !== "pave" || this.values.coverage !== "shoulders"
+          : this.tab !== "shoulders";
       if (e.hidden) continue;
       const row = this.s.band.row(),
         a =

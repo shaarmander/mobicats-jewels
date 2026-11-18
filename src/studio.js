@@ -398,12 +398,12 @@ export class JewelryStudio {
   setProfile(profile) {
     if (!["fine", "classic", "bold"].includes(profile)) return;
     this.state.profile = profile;
-    this.fitCenter(this.lib.gems.find((g) => g.id === this.state.center));
+    this.setGems(this.state.center, this.state.accent);
     this.invalidate(true);
   }
   setCarats(value) {
     this.state.carats = T.MathUtils.clamp(value, 0.5, 3);
-    this.fitCenter(this.lib.gems.find((g) => g.id === this.state.center));
+    this.setGems(this.state.center, this.state.accent);
     this.invalidate(true);
   }
   fitCenter(gem, batch = true) {

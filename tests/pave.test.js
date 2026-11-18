@@ -85,3 +85,58 @@ test("cut seats remove metal and leave a blind floor below each pavilion", () =>
     );
   }
 });
+test("full eternity carries staggered lanes across the rear with a regular shared-grain interval", () => {
+  const o = {
+    ...options,
+    rows: 3,
+    width: 5.5,
+    front: 5.5,
+    pave: 0,
+    coverage: "full",
+  };
+  const plan = layout(o);
+  assert.equal(plan.requested, plan.seats.length);
+  assert.equal(new Set(plan.seats.map((s) => s.id)).size, plan.seats.length);
+  for (let row = 0; row < 3; row++) {
+    const lane = plan.seats.filter((s) => s.row === row);
+    assert.ok(lane.length > 25);
+    assert.ok(
+      plan.rowPitches[row] >= o.pitch && plan.rowPitches[row] < o.pitch * 1.04,
+    );
+    const seam = lane.findIndex((s, i) => i > 0 && s.side !== lane[i - 1].side);
+    assert.ok(seam > 0 && Math.abs(lane[seam].a) > 2.9);
+    assert.ok(
+      Math.abs(
+        lane[seam].p.distanceTo(lane[seam - 1].p) - plan.rowPitches[row],
+      ) < 0.015,
+    );
+    assert.equal(grainMatrices(lane).length, 2 * lane.length + 2);
+  }
+});
+test("three-quarter fills past the shoulders and older shared bands retain their position count", () => {
+  const o = { ...options, pave: 3 };
+  delete o.coverage;
+  const restored = validBand(o);
+  assert.equal(restored.coverage, "shoulders");
+  assert.equal(layout(restored).seats.length, 6);
+  const extended = layout({
+    ...restored,
+    coverage: "threeQuarter",
+    pave: 0,
+  }).seats;
+  assert.ok(
+    extended.length > 6 && extended.some((s) => Math.abs(s.a) > Math.PI / 2),
+  );
+  assert.ok(extended.every((s) => Math.abs(s.a) < (3 * Math.PI) / 4));
+  const narrow = layout({
+    ...restored,
+    coverage: "full",
+    front: 4,
+    width: 1.6,
+    sizing: "fixed",
+  });
+  assert.ok(
+    narrow.seats.length < narrow.requested &&
+      narrow.seats.every((s) => Math.abs(s.a) < Math.PI - 0.2),
+  );
+});

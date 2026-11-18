@@ -4,6 +4,7 @@ import * as T from "three";
 export const meleeDiameter = 1.2999999523162842;
 export const meleeCarats = 0.00796800758689642;
 export const paveDefaults = {
+  coverage: "shoulders",
   rows: 1,
   pitch: 1.45,
   weight: 0.008,
@@ -110,10 +111,11 @@ function lanes(section, o, target) {
   }
   return result;
 }
-function pathsAlongShoulder(surface, o, diameter, start, sign) {
+function pathsAlongShoulder(surface, o, diameter, start, end, sign) {
   const tracks = Array.from({ length: o.rows }, () => []);
-  for (let i = 0; i <= 48; i++) {
-    const a = sign * T.MathUtils.lerp(start, Math.PI / 2, i / 48),
+  const steps = Math.ceil((48 * end) / (Math.PI / 2));
+  for (let i = 0; i <= steps; i++) {
+    const a = sign * T.MathUtils.lerp(start, end, i / steps),
       section = crossSection(surface, a);
     for (const [j, lane] of lanes(section, o, diameter).entries()) {
       const p =
@@ -138,84 +140,143 @@ function pathsAlongShoulder(surface, o, diameter, start, sign) {
     },
   }));
 }
-export function paveLayout(surface, o, start) {
-  const diameter = diameterFor(o.weight),
-    pitch = Math.max(o.pitch, diameter + clearance);
-  const seats = [],
-    paths = [-1, 1].map((sign) =>
-      pathsAlongShoulder(surface, o, diameter, start, sign),
+function layoutPositions(o, paths, pitch, diameter, end, start) {
+  const positions = [],
+    angles = [],
+    rowPitches = [];
+  const manual = o.coverage === "shoulders" || !o.coverage;
+  if (o.coverage === "full") {
+    // Treat the two shoulders as one path from one side of the setting to
+    // the other. The back seam is an ordinary interval on that path.
+    const lengths = paths[0].map(
+      (track, row) => track.length + paths[1][row].length,
     );
-  const length = Math.min(...paths.map((tracks) => tracks[0].length));
+    const intervals = Math.floor(Math.min(...lengths) / pitch);
+    if (start < end && intervals > 0) {
+      for (let row = 0; row < o.rows; row++) {
+        const spacing = lengths[row] / intervals,
+          offset = (row % 2) * 0.5;
+        rowPitches.push(spacing);
+        for (let order = 0; order + offset <= intervals; order++) {
+          const distance = (order + offset) * spacing;
+          const side = distance <= paths[1][row].length ? 1 : 0;
+          const fromHead = side
+            ? distance
+            : Math.max(0, lengths[row] - distance);
+          const i = side ? order : intervals - order - (row % 2);
+          positions.push({
+            a: paths[side][row].angle(fromHead),
+            side,
+            i,
+            row,
+            order,
+          });
+        }
+      }
+    }
+    return { positions, angles, max: 0, count: 0, rowPitches };
+  }
+  const length = Math.min(...paths.map((t) => t[0].length));
   const max =
-    start >= Math.PI / 2
+    start >= end
       ? 0
       : Math.max(
           0,
-          Math.min(14, 1 + Math.floor((length - diameter / 2) / pitch)),
+          Math.min(
+            manual ? 14 : Infinity,
+            1 + Math.floor((length - diameter / 2) / pitch),
+          ),
         );
-  const angles = Array.from({ length: max }, (_, i) =>
-    Math.abs(paths[1][0].angle(i * pitch)),
-  );
+  const count = manual ? Math.min(o.pave, max) : max;
+  for (let i = 0; i < max; i++)
+    angles.push(Math.abs(paths[1][0].angle(i * pitch)));
   for (const [side, tracks] of paths.entries())
-    for (let i = 0; i < Math.min(o.pave, max); i++) {
+    for (let i = 0; i < count; i++)
       for (let row = 0; row < o.rows; row++) {
-        const track = tracks[row];
-        const dist = (i + (row % 2) * 0.5) * pitch;
-        if (dist + diameter / 2 > track.length) continue;
-        const a = track.angle(dist),
-          section = crossSection(surface, a),
-          lane = lanes(section, o, diameter)[row];
-        if (!lane.valid) continue;
-        const { d, z } = lane,
-          p = section.at(z),
-          left = section.at(z - 0.025),
-          right = section.at(z + 0.025);
-        if (!p || !left || !right) continue;
-        const ahead = crossSection(surface, a + 0.002).at(z),
-          behind = crossSection(surface, a - 0.002).at(z);
-        if (!ahead || !behind) continue;
-        const along = ahead.sub(behind).normalize(),
-          across = right.sub(left).normalize();
-        const normal = across.clone().cross(along).normalize();
-        if (normal.dot(p.clone().setZ(0)) < 0) normal.negate();
-        across.crossVectors(along, normal).normalize();
-        // Verify the entire girdle has metal beneath it, including narrow valleys
-        // on rolled or intertwined shanks. Preserve a metal floor under the pavilion.
-        const bottom = crossSection(surface, a, true).at(z);
-        if (!bottom || p.clone().sub(bottom).dot(normal) < d * 0.55 + 0.25)
-          continue;
-        const supported = [-0.44, 0.44].every((f) => {
-          const rim = p.clone().addScaledVector(across, d * f),
-            skin = section.at(rim.z);
-          return skin && skin.sub(rim).dot(normal) > -d * 0.22;
-        });
-        if (
-          !supported ||
-          seats.some((s) => s.p.distanceTo(p) < (s.d + d) / 2 + 0.07)
-        )
-          continue;
-        seats.push({
-          i,
-          row,
-          side,
-          a,
-          p,
-          d,
-          along,
-          across,
-          normal,
-          id: row * 100 + i * 2 + side,
-        });
+        const distance = (i + (row % 2) * 0.5) * pitch;
+        if (distance + diameter / 2 <= tracks[row].length)
+          positions.push({ a: tracks[row].angle(distance), side, i, row });
       }
-    }
+  return { positions, angles, max, count, rowPitches: [pitch] };
+}
+export function paveLayout(surface, o, start) {
+  const diameter = diameterFor(o.weight),
+    pitch = Math.max(o.pitch, diameter + clearance);
+  const end =
+    o.coverage === "full"
+      ? Math.PI
+      : o.coverage === "threeQuarter"
+        ? (3 * Math.PI) / 4
+        : Math.PI / 2;
+  const paths = [-1, 1].map((sign) =>
+    pathsAlongShoulder(surface, o, diameter, start, end, sign),
+  );
+  const { positions, angles, max, count, rowPitches } = layoutPositions(
+    o,
+    paths,
+    pitch,
+    diameter,
+    end,
+    start,
+  );
+  const seats = [];
+  for (const { a, side, i, row, order } of positions) {
+    const section = crossSection(surface, a),
+      lane = lanes(section, o, diameter)[row];
+    if (!lane.valid) continue;
+    const { d, z } = lane,
+      p = section.at(z),
+      left = section.at(z - 0.025),
+      right = section.at(z + 0.025);
+    if (!p || !left || !right) continue;
+    const ahead = crossSection(surface, a + 0.002).at(z),
+      behind = crossSection(surface, a - 0.002).at(z);
+    if (!ahead || !behind) continue;
+    const along = ahead.sub(behind).normalize(),
+      across = right.sub(left).normalize();
+    const normal = across.clone().cross(along).normalize();
+    if (normal.dot(p.clone().setZ(0)) < 0) normal.negate();
+    across.crossVectors(along, normal).normalize();
+    // Verify the entire girdle has metal beneath it, including narrow valleys
+    // on rolled or intertwined shanks. Preserve a metal floor under the pavilion.
+    const bottom = crossSection(surface, a, true).at(z);
+    if (!bottom || p.clone().sub(bottom).dot(normal) < d * 0.55 + 0.25)
+      continue;
+    const supported = [-0.44, 0.44].every((f) => {
+      const rim = p.clone().addScaledVector(across, d * f),
+        skin = section.at(rim.z);
+      return skin && skin.sub(rim).dot(normal) > -d * 0.22;
+    });
+    if (
+      !supported ||
+      seats.some((s) => s.p.distanceTo(p) < (s.d + d) / 2 + 0.07)
+    )
+      continue;
+    seats.push({
+      i,
+      row,
+      side,
+      a,
+      p,
+      d,
+      along,
+      across,
+      normal,
+      order,
+      id:
+        i < 50 ? row * 100 + 2 * i + side : 300 + 6 * (i - 50) + 2 * row + side,
+    });
+  }
   return {
     seats,
+    requested: positions.length,
+    rowPitches,
     start,
     max,
     angles,
-    pitchMm: pitch,
+    pitchMm: rowPitches[0] ?? pitch,
     pitch: pitch / radial(new T.Vector3(...surface.section(start, 0, 1, 0))),
-    count: Math.min(o.pave, max),
+    count,
   };
 }
 
@@ -240,7 +301,7 @@ export function grainMatrices(seats) {
   const out = [],
     groups = new Map();
   for (const s of seats) {
-    const k = s.side + ":" + s.row;
+    const k = s.order === undefined ? s.side + ":" + s.row : "wrap:" + s.row;
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(s);
   }
@@ -278,13 +339,16 @@ export function grainMatrices(seats) {
     }
   }
   for (const line of groups.values()) {
-    const forward = line[0].side ? 1 : -1;
+    const forward = line[0].order !== undefined || line[0].side ? 1 : -1;
     terminal(line[0], -forward);
     for (let i = 1; i < line.length; i++) {
       const s = line[i - 1],
         t = line[i],
         gap = s.p.distanceTo(t.p) - (s.d + t.d) / 2;
-      if (t.i !== s.i + 1 || gap > 0.32 * Math.min(s.d, t.d)) {
+      if (
+        (t.order ?? t.i) !== (s.order ?? s.i) + 1 ||
+        gap > 0.32 * Math.min(s.d, t.d)
+      ) {
         terminal(s, forward);
         terminal(t, -forward);
         continue;

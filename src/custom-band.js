@@ -258,7 +258,6 @@ export class CustomBand {
       this.plan = null;
       s.focusPick = null;
       this.refreshFinish();
-      this.populate();
       s.setGems(s.state.center, s.state.accent);
       return true;
     }
@@ -304,7 +303,6 @@ export class CustomBand {
     this.group.add(this.shank);
     this.surface = surface;
     this.refreshFinish();
-    this.populate();
     s.setGems(s.state.center, s.state.accent);
     return true;
   }
@@ -366,26 +364,34 @@ export class CustomBand {
     this.preview = { fit, scale: fit.scale, profile: fit.profile, plan };
     return plan;
   }
-  populate() {
+  placeStones(seats) {
     const active = new Map(this.gems.map((m) => [m.userData.seatId, m]));
     this.gems = [];
-    for (let row = 0; row < this.options.rows; row++)
-      for (let i = 0; i < this.options.pave; i++)
-        for (let side = 0; side < 2; side++) {
-          const id = 100 * row + 2 * i + side;
-          let m = active.get(id);
-          if (!m) {
-            m = new T.Mesh(geometry, this.metal);
-            m.userData = { ...melee.extras, seatId: id };
-            m.name = "pave-" + id;
-            m.layers.set(pavePickLayer);
-            m.matrixAutoUpdate = false;
-            this.group.add(m);
-          }
-          active.delete(id);
-          this.gems.push(m);
-        }
-    for (const m of active.values()) m.removeFromParent();
+    for (const seat of seats) {
+      const { id } = seat;
+      let m = active.get(id);
+      if (!m) {
+        m = new T.Mesh(geometry, this.metal);
+        m.userData = { ...melee.extras, seatId: id };
+        m.name = "pave-" + id;
+        m.layers.set(pavePickLayer);
+        m.matrixAutoUpdate = false;
+        this.group.add(m);
+      }
+      m.position.copy(seat.p).addScaledVector(seat.normal, -0.055 * seat.d);
+      m.scale.setScalar(seat.d / 2);
+      m.userData.mmPerUnit = m.scale.x;
+      m.userData.diamondCarats = weightFor(seat.d);
+      m.quaternion.setFromRotationMatrix(
+        matrix.makeBasis(seat.along, seat.normal, seat.across),
+      );
+      active.delete(id);
+      this.gems.push(m);
+    }
+    for (const m of active.values()) {
+      m.userData.bandHidden = true;
+      m.removeFromParent();
+    }
     this.studio.stones = [
       ...this.studio.fit.stones.filter((m) => m.userData.role !== "pave"),
       ...this.gems,
@@ -442,20 +448,7 @@ export class CustomBand {
     this.lastScale = fit.scale;
     this.lastProfile = fit.profile;
     const plan = (this.plan = paveLayout(this.surface, this.options, start));
-    const seats = new Map(plan.seats.map((seat) => [seat.id, seat]));
-    for (const m of this.gems) {
-      const seat = seats.get(m.userData.seatId);
-      m.userData.bandHidden = !seat;
-      m.visible = !!seat;
-      if (!seat) continue;
-      m.position.copy(seat.p).addScaledVector(seat.normal, -0.055 * seat.d);
-      m.scale.setScalar(seat.d / 2);
-      m.userData.mmPerUnit = m.scale.x;
-      m.userData.diamondCarats = weightFor(seat.d);
-      m.quaternion.setFromRotationMatrix(
-        matrix.makeBasis(seat.along, seat.normal, seat.across),
-      );
-    }
+    this.placeStones(plan.seats);
     if (
       s.focusPick?.object === this.shank ||
       s.focusPick?.object.userData.bandHidden
