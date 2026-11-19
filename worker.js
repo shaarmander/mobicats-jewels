@@ -1,3 +1,6 @@
+import { previewId } from "./src/preview-id.js";
+import { ringName } from "./src/ring-name.js";
+
 const previewPath = /^\/s\/([a-f0-9]{64})(\/image\.jpg)?$/;
 const fallbackImage = "/assets/brand/ring-preview.jpg";
 const maxBytes = 160 * 1024;
@@ -44,10 +47,19 @@ async function savePreview(request, env, origin) {
   const bytes = new Uint8Array(await request.arrayBuffer());
   if (bytes.length !== length || !validJpeg(bytes))
     return new Response(null, { status: 400 });
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  const id = Array.from(new Uint8Array(digest), (n) =>
-    n.toString(16).padStart(2, "0"),
-  ).join("");
+  const key = request.headers.get("X-Preview-Key");
+  let id;
+  if (key !== null) {
+    if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(key))
+      return new Response(null, { status: 400 });
+    id = await previewId(key);
+  } else {
+    // Older open tabs still ask the server for a content-addressed link.
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    id = Array.from(new Uint8Array(digest), (n) =>
+      n.toString(16).padStart(2, "0"),
+    ).join("");
+  }
   await env.PREVIEWS.put(id, bytes, { expirationTtl: previewLifetime });
   return Response.json({ id }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -91,6 +103,18 @@ export default {
       return request.method === "HEAD" ? new Response(null, image) : image;
     }
     const page = await env.ASSETS.fetch(new URL("/", url.origin));
+    const p = url.searchParams;
+    let band;
+    try {
+      band = JSON.parse(p.get("band"));
+    } catch {}
+    const name = ringName(Object.fromEntries(p), band);
+    const title = name + " | Mobicat’s Jewels";
+    const titleTag = {
+      element(tag) {
+        tag.setAttribute("content", title);
+      },
+    };
     const photo = url.origin + url.pathname + "/image.jpg";
     const imageTag = {
       element(tag) {
@@ -98,6 +122,13 @@ export default {
       },
     };
     const tags = new HTMLRewriter()
+      .on("title", {
+        element(tag) {
+          tag.setInnerContent(title);
+        },
+      })
+      .on('meta[property="og:title"]', titleTag)
+      .on('meta[name="twitter:title"]', titleTag)
       .on('meta[property="og:image"]', imageTag)
       .on('meta[name="twitter:image"]', imageTag)
       .on('meta[property="og:url"]', {

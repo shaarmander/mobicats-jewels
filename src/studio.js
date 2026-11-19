@@ -807,8 +807,7 @@ export class JewelryStudio {
     this.scheduleFrame();
   }
   captureImage(preview = false, readState) {
-    // Finish the idle samples over ordinary animation frames. Capture while
-    // the completed WebGL buffer is still valid, before browser compositing.
+    // Capture from a freshly presented WebGL buffer before compositing.
     return new Promise((resolve, reject) => {
       if (this.snapshot || this.tryingOn) {
         reject(new Error("Capture unavailable"));
@@ -821,7 +820,14 @@ export class JewelryStudio {
         readState,
         model: this.model,
       };
-      this.scheduleFrame();
+      if (preview) {
+        // A mobile user can switch to Messages immediately after copying.
+        // Read this view now, while animation frames are still available.
+        cancelAnimationFrame(this.raf);
+        this.frame(performance.now());
+      } else {
+        this.scheduleFrame();
+      }
     });
   }
   scheduleFrame() {
@@ -874,7 +880,10 @@ export class JewelryStudio {
       this.state.aperture,
       !this.snapshot && (changed || this.state.spin || this.moving),
     );
-    if (this.snapshot && !refining && !this.probeDirty) {
+    if (
+      this.snapshot &&
+      (this.snapshot.preview || (!refining && !this.probeDirty))
+    ) {
       const { resolve, reject, preview, readState } = this.snapshot;
       const state = readState?.();
       this.snapshot = null;

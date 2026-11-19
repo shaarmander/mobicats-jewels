@@ -27,6 +27,7 @@
       content="A ring rendered in Mobicat’s Jewels"
     />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="A ring from Mobicat’s Jewels" />
     <meta
       name="twitter:image"
       content="https://jewels.mobicat.club/assets/brand/ring-preview.jpg"
@@ -504,6 +505,10 @@
         <button id="pick-focus">Pick surface</button
         ><button id="center-focus">Center stone</button>
       </div>
+      <div class="action-pair">
+        <button id="save-image">Save ring image</button>
+      </div>
+      <small id="save-feedback" role="status"></small>
     </aside>
     <aside
       class="card flyout top-panel"
@@ -512,7 +517,7 @@
       aria-labelledby="share-heading"
     >
       <div class="card-head">
-        <h2 id="share-heading">Share this ring</h2>
+        <h2 id="share-heading">Copy this ring link</h2>
         <button
           class="bare"
           data-close="share-panel"
@@ -521,24 +526,15 @@
           <i data-icon="close"></i>
         </button>
       </div>
-      <div class="action-pair">
-        <button id="copy-design">Copy design link</button
-        ><button id="save-image">Save image</button>
-      </div>
-      <input id="share-url" aria-label="Design link" readonly hidden />
-      <small id="share-feedback" role="status"></small>
+      <input id="share-url" aria-label="Design link" readonly />
     </aside>
     <div class="object-label">
-      <button
-        id="share-toggle"
-        aria-controls="share-panel"
-        aria-expanded="false"
-        disabled
-      >
-        Share this ring <i data-icon="share"></i>
+      <button id="share-toggle" title="Copy a link to this ring" disabled>
+        <span id="share-caption" aria-live="polite">Share this ring</span>
+        <i data-icon="share"></i>
       </button>
-      <h2 id="design-title">Diamond trilogy</h2>
-      <span id="design-detail">Emerald cut · 18k yellow gold</span>
+      <h2 id="design-title">Sunspire Trinity</h2>
+      <span id="design-detail">Diamond · Emerald cut · 18k yellow gold</span>
       <small class="part-hint">Tap a stone or the band to edit</small>
     </div>
     <div class="dock" role="toolbar" aria-label="Stage controls">

@@ -481,6 +481,11 @@ input[type="range"] {
   letter-spacing: -1px;
   margin: 0 0 6px;
 }
+@media (min-width: 901px) {
+  .object-label {
+    max-width: calc(50vw - 200px);
+  }
+}
 .object-label span,
 .status {
   font-size: 11px;
@@ -1326,7 +1331,10 @@ input[type="range"] {
   width: 15px;
   height: 15px;
 }
-#share-feedback:not(:empty) {
+#lens-panel .action-pair + .action-pair {
+  margin-top: 8px;
+}
+#save-feedback:not(:empty) {
   display: block;
   margin-top: 10px;
 }

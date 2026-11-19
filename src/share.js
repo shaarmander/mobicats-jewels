@@ -1,4 +1,5 @@
 import { validBand } from "./band-shape.js";
+import { previewId } from "./preview-id.js";
 const vector = (v) => v.toArray().map((n) => +n.toFixed(5));
 
 export function designLink(studio) {
@@ -158,23 +159,46 @@ export function restoreView(studio, s) {
   studio.invalidate(true);
 }
 
-let lastPreview;
-export async function previewLink(studio, legacy) {
-  if (lastPreview?.design === legacy) return lastPreview.url;
-  const { blob: image, state: captured } = await studio.captureImage(true, () =>
+let spareTicket, lastPreview;
+async function prepareTicket() {
+  if (!globalThis.crypto?.subtle) return;
+  const key = crypto.randomUUID();
+  spareTicket = { key, id: await previewId(key) };
+}
+void prepareTicket().catch(() => {});
+
+async function uploadPreview(studio, entry) {
+  const { blob: image, state } = await studio.captureImage(true, () =>
     designLink(studio),
   );
+  if (state !== entry.design) throw Error("View changed during capture");
   const response = await fetch("/api/share", {
     method: "POST",
-    headers: { "Content-Type": "image/jpeg" },
+    headers: { "Content-Type": "image/jpeg", "X-Preview-Key": entry.key },
     body: image,
+    keepalive: image.size <= 64 * 1024,
     signal: AbortSignal.timeout(12000),
   });
-  if (!response.ok) throw Error("Preview unavailable");
-  const { id } = await response.json();
-  if (!/^[a-f0-9]{64}$/.test(id)) throw Error("Invalid preview");
-  const url = new URL("/s/" + id, location.origin);
-  url.search = new URL(captured).hash.slice(1);
-  lastPreview = { design: captured, url: url.href };
-  return url.href;
+  if (!response.ok || (await response.json()).id !== entry.id)
+    throw Error("Preview unavailable");
+}
+
+export function shareDesign(studio) {
+  const design = designLink(studio);
+  if (lastPreview?.design !== design) {
+    if (!spareTicket) return design;
+    const url = new URL("/s/" + spareTicket.id, location.origin);
+    url.search = new URL(design).hash.slice(1);
+    lastPreview = { ...spareTicket, design, url: url.href };
+    spareTicket = null;
+    void prepareTicket().catch(() => {});
+  }
+  const entry = lastPreview;
+  // A repeat tap reuses the link and retries a failed upload.
+  entry.upload ??= Promise.resolve()
+    .then(() => uploadPreview(studio, entry))
+    .catch(() => {
+      entry.upload = null;
+    });
+  return entry.url;
 }

@@ -1,6 +1,7 @@
 import { BandPanel } from "./band-panel.js";
 import "./style.css";
-import { designLink, previewLink, readDesign, restoreView } from "./share.js";
+import { shareDesign, readDesign, restoreView } from "./share.js";
+import { ringName } from "./ring-name.js";
 import lib from "../public/assets/library.json";
 import rigs from "../public/assets/lights/lights.json";
 import poses from "../public/assets/ring-poses.json";
@@ -97,7 +98,6 @@ function panel(id, hit = null) {
     ["cuts-open", "cuts"],
     ["light-toggle", "light-panel"],
     ["lens-toggle", "lens-panel"],
-    ["share-toggle", "share-panel"],
   ])
     $(a).setAttribute("aria-expanded", String(b === id));
   if (id === "library") {
@@ -155,15 +155,11 @@ function paint() {
   $("light-toggle").setAttribute("aria-label", "Lighting, " + rig.name);
   document.querySelector('[data-target="accent"]').disabled =
     !studio.stones.some((stone) => stone.userData.role !== "center");
-  $("design-title").textContent =
-    center.name +
-    " " +
-    (s.setting === "trilogy"
-      ? "trilogy"
-      : lib.settings
-          .find((setting) => setting.id === s.setting)
-          .name.toLowerCase());
-  $("design-detail").textContent = cut.name + " cut · " + metal.name;
+  const name = ringName(s, studio.band.preset ? null : studio.band.options);
+  $("design-title").textContent = name;
+  document.title = name + " | Mobicat’s Jewels";
+  $("design-detail").textContent =
+    center.name + " · " + cut.name + " cut · " + metal.name;
   $("focus-label").textContent =
     studio.focusRole === "center" ? "Center stone" : "Picked surface";
   $("style-name").textContent = lib.settings.find(
@@ -316,54 +312,46 @@ async function startTryOn() {
 }
 function bind() {
   bandPanel = new BandPanel(studio, panel, paint);
-  $("share-toggle").onclick = () => {
-    $("share-feedback").textContent = "";
-    $("share-url").hidden = true;
-    togglePanel("share-panel");
-  };
-  $("copy-design").onclick = async () => {
-    const button = $("copy-design"),
-      feedback = $("share-feedback");
-    const legacy = designLink(studio);
-    button.disabled = true;
-    feedback.textContent = "Preparing ring preview…";
-    const ready = previewLink(studio, legacy).catch(() => legacy);
+  let feedbackTimer,
+    copyRequest = 0;
+  $("share-toggle").onclick = async () => {
+    const token = ++copyRequest;
+    clearTimeout(feedbackTimer);
+    const url = shareDesign(studio);
+    const feedback = $("share-caption");
+    feedback.textContent = "Copying…";
     try {
-      // Safari requires the clipboard call itself to run in the tap handler.
-      if (window.ClipboardItem && navigator.clipboard?.write) {
-        await navigator.clipboard.write([
-          new ClipboardItem({
-            "text/plain": ready.then(
-              (url) => new Blob([url], { type: "text/plain" }),
-            ),
-          }),
-        ]);
-      } else {
-        await navigator.clipboard.writeText(await ready);
-      }
-      feedback.textContent =
-        (await ready) === legacy
-          ? "Design link copied. Image preview unavailable."
-          : "Design link with ring preview copied.";
+      // Invoke the clipboard from the tap itself, including on Safari.
+      await navigator.clipboard.writeText(url);
+      if (token !== copyRequest) return;
+      feedback.textContent = "Link copied";
     } catch {
+      if (token !== copyRequest) return;
       const input = $("share-url");
-      input.value = await ready;
-      input.hidden = false;
+      input.value = url;
+      panel("share-panel");
+      input.focus();
       input.select();
-      feedback.textContent =
-        input.value === legacy
-          ? "Copy the selected link. Image preview unavailable."
-          : "Copy the selected preview link.";
-    } finally {
-      button.disabled = false;
+      if (document.execCommand?.("copy")) {
+        panel(null);
+        $("share-toggle").focus();
+        feedback.textContent = "Link copied";
+      } else {
+        feedback.textContent = "Share this ring";
+      }
     }
+    feedbackTimer = setTimeout(() => {
+      feedback.textContent = "Share this ring";
+    }, 2400);
   };
   $("save-image").onclick = async () => {
     const button = $("save-image");
     button.disabled = true;
-    $("share-feedback").textContent = "Preparing image�";
+    $("save-feedback").textContent = "Preparing image…";
     try {
-      const name = studio.state.setting + "-" + studio.state.cut,
+      const name = $("design-title")
+          .textContent.toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-"),
         blob = await studio.captureImage();
       const url = URL.createObjectURL(blob),
         link = document.createElement("a");
@@ -373,9 +361,9 @@ function bind() {
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-      $("share-feedback").textContent = "Image ready.";
+      $("save-feedback").textContent = "Image ready.";
     } catch {
-      $("share-feedback").textContent = "Image could not be saved. Try again.";
+      $("save-feedback").textContent = "Image could not be saved. Try again.";
     } finally {
       button.disabled = false;
     }
